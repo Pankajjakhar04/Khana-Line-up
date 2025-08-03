@@ -339,9 +339,14 @@ export const useOrders = () => {
   useEffect(() => {
     loadOrders();
     
-    // Set up periodic refresh every 30 seconds to ensure real-time updates
+    // Set up periodic refresh every 30 seconds, but only if we're not on the login page
+    // Check if there's any user authenticated to prevent refresh during login
     const interval = setInterval(() => {
-      loadOrders();
+      // Only auto-refresh if user is likely logged in (check localStorage)
+      const savedAuth = localStorage.getItem('khanaLineupAuth');
+      if (savedAuth) {
+        loadOrders();
+      }
     }, 30000);
 
     return () => clearInterval(interval);
