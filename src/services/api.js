@@ -30,7 +30,13 @@ class ApiService {
         } catch {
           errorData = { message: errorText || 'Network error' };
         }
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        
+        // Create a custom error that preserves the full error data
+        const error = new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        error.errorType = errorData.errorType;
+        error.status = response.status;
+        error.data = errorData;
+        throw error;
       }
 
       const data = await response.json();
@@ -75,7 +81,7 @@ class ApiService {
   }
 
   async getAllUsers() {
-    return this.request('/auth/users');
+    return this.request('/auth/users?active=true');
   }
 
   async getUserById(userId) {

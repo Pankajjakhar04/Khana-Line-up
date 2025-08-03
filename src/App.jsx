@@ -210,16 +210,18 @@ const KhanaLineupApp = () => {
         }
       } catch (error) {
         console.error('Login error:', error);
+        console.error('Error errorType:', error.errorType);
+        console.error('Error status:', error.status);
+        console.error('Error data:', error.data);
         
         // Check if it's an email not found error
-        if (error.message && error.message.includes('Email not found')) {
+        if (error.errorType === 'email_not_found' || 
+            (error.message && error.message.includes('Email not found')) ||
+            (error.status === 404 && error.data && error.data.errorType === 'email_not_found')) {
           setErrors({ 
-            email: 'Email not found. Please register for a new account or check your email address.' 
+            email: 'Email not found. Would you like to register instead?' 
           });
-        } else if (error.response && error.response.status === 404) {
-          setErrors({ 
-            email: 'Email not found. Please register for a new account or check your email address.' 
-          });
+          // You could also add logic here to show a "Go to Registration" button
         } else {
           setErrors({ email: 'Invalid email or password' });
         }
@@ -2436,19 +2438,24 @@ const KhanaLineupApp = () => {
       setEditUserData({});
     };
 
-    const handleDeleteUser = (userId) => {
+    const handleDeleteUser = async (userId) => {
       const user = allUsers.find(u => u.id === userId);
       
       if (confirm(`Are you sure you want to delete user: ${user.name}?`)) {
-        if (user.role === 'admin') {
-          alert('Admin user deleted! You may need to reset the database to recreate the admin account.');
-        }
-        // Use the deleteUser function from hooks
-        const result = deleteUser(userId);
-        if (result) {
-          alert('User deleted successfully!');
-        } else {
-          alert('Failed to delete user.');
+        try {
+          if (user.role === 'admin') {
+            alert('Admin user deleted! You may need to reset the database to recreate the admin account.');
+          }
+          // Use the deleteUser function from hooks (it's async)
+          const result = await deleteUser(userId);
+          if (result) {
+            alert('User deleted successfully!');
+          } else {
+            alert('Failed to delete user.');
+          }
+        } catch (error) {
+          console.error('Error deleting user:', error);
+          alert('Failed to delete user. Please try again.');
         }
       }
     };
