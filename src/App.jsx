@@ -10,6 +10,8 @@ const SearchInput = memo(({ value, onChange, placeholder, searchKey, inputRef })
       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
       <input
         ref={inputRef}
+        id={searchKey}
+        name={searchKey}
         type="text"
         placeholder={placeholder}
         value={value}
@@ -332,6 +334,8 @@ const KhanaLineupApp = () => {
             {isRegistering && (
               <div>
                 <input
+                  id="registration-name"
+                  name="name"
                   type="text"
                   placeholder="Full Name"
                   value={formData.name}
@@ -346,6 +350,8 @@ const KhanaLineupApp = () => {
             
             <div>
               <input
+                id="login-email"
+                name="email"
                 type="email"
                 placeholder="Email"
                 value={formData.email}
@@ -374,6 +380,8 @@ const KhanaLineupApp = () => {
             
             <div className="relative">
               <input
+                id="login-password"
+                name="password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Password"
                 value={formData.password}
@@ -394,6 +402,8 @@ const KhanaLineupApp = () => {
 
             {isRegistering && (
               <select
+                id="registration-role"
+                name="role"
                 value={formData.role}
                 onChange={(e) => setFormData({...formData, role: e.target.value})}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
@@ -1237,6 +1247,8 @@ const KhanaLineupApp = () => {
                 <div className="space-y-3">
                   <div className="flex gap-2">
                     <input
+                      id={`estimated-time-${order._id || order.id}`}
+                      name={`estimated-time-${order._id || order.id}`}
                       type="number"
                       placeholder="Est. time (mins)"
                       min="1"
@@ -1408,6 +1420,8 @@ const KhanaLineupApp = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <input
+              id="new-item-name"
+              name="itemName"
               type="text"
               placeholder="Item Name*"
               value={newItem.name}
@@ -1415,6 +1429,8 @@ const KhanaLineupApp = () => {
               className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
             <input
+              id="new-item-price"
+              name="itemPrice"
               type="number"
               placeholder="Price*"
               value={newItem.price}
@@ -1422,6 +1438,8 @@ const KhanaLineupApp = () => {
               className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
             <select
+              id="new-item-category"
+              name="itemCategory"
               value={newItem.category}
               onChange={(e) => setNewItem({...newItem, category: e.target.value})}
               className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
@@ -1434,6 +1452,8 @@ const KhanaLineupApp = () => {
               <option value="Dessert">Dessert</option>
             </select>
             <input
+              id="new-item-description"
+              name="itemDescription"
               type="text"
               placeholder="Description"
               value={newItem.description}
@@ -1456,6 +1476,8 @@ const KhanaLineupApp = () => {
               {editingItem === item.id ? (
                 <div className="space-y-4">
                   <input
+                    id={`edit-item-name-${item.id}`}
+                    name={`editItemName-${item.id}`}
                     type="text"
                     value={editData.name || ''}
                     onChange={(e) => setEditData({ ...editData, name: e.target.value })}
@@ -1463,6 +1485,8 @@ const KhanaLineupApp = () => {
                     placeholder="Item name"
                   />
                   <input
+                    id={`edit-item-price-${item.id}`}
+                    name={`editItemPrice-${item.id}`}
                     type="number"
                     value={editData.price || ''}
                     onChange={(e) => setEditData({ ...editData, price: e.target.value })}
@@ -1470,6 +1494,8 @@ const KhanaLineupApp = () => {
                     placeholder="Price"
                   />
                   <select
+                    id={`edit-item-category-${item.id}`}
+                    name={`editItemCategory-${item.id}`}
                     value={editData.category || ''}
                     onChange={(e) => setEditData({ ...editData, category: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
