@@ -877,13 +877,19 @@ const KhanaLineupApp = () => {
                 })()}
                 
                 {/* Show estimated time for active orders */}
-                {(order.estimatedTime !== undefined && order.estimatedTime !== null && Number(order.estimatedTime) > 0) && 
+                {(order.estimatedTime !== undefined && order.estimatedTime !== null && 
+                  (
+                    (typeof order.estimatedTime === 'string' && order.estimatedTime.trim() !== '') ||
+                    (typeof order.estimatedTime === 'number' && order.estimatedTime > 0) ||
+                    (!isNaN(Number(order.estimatedTime)) && Number(order.estimatedTime) > 0)
+                  )
+                ) && 
                  !['completed', 'cancelled'].includes(order.status?.toLowerCase()) && (
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4">
                     <div className="flex items-center gap-2">
                       <Clock size={16} className="text-orange-600" />
                       <span className="text-orange-800 font-medium">
-                        Estimated Time: {order.estimatedTime} minutes
+                        Estimated Time: {typeof order.estimatedTime === 'number' ? `${order.estimatedTime} minutes` : order.estimatedTime}
                       </span>
                     </div>
                   </div>
@@ -891,7 +897,11 @@ const KhanaLineupApp = () => {
                 
                 {/* Fallback: Show message for ready orders without estimated time */}
                 {order.status?.toLowerCase() === 'ready' && 
-                 (order.estimatedTime === undefined || order.estimatedTime === null || Number(order.estimatedTime) <= 0) && (
+                 (order.estimatedTime === undefined || order.estimatedTime === null || 
+                  (typeof order.estimatedTime === 'string' && order.estimatedTime.trim() === '') ||
+                  (typeof order.estimatedTime === 'number' && order.estimatedTime <= 0) ||
+                  (isNaN(Number(order.estimatedTime)) && typeof order.estimatedTime !== 'string')
+                 ) && (
                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
                     <div className="flex items-center gap-2">
                       <Bell size={16} className="text-blue-600" />
@@ -2303,19 +2313,19 @@ const KhanaLineupApp = () => {
                 <div className="flex-1">
                   <h4 className="font-semibold text-blue-800 mb-2">Set Estimated Time for Testing</h4>
                   <p className="text-blue-700 text-sm mb-4">
-                    Set estimated time for Token #6 (or any order) to test the display functionality.
+                    Set estimated time for Token #7 (or any order) to test the display functionality.
                   </p>
                   <button
                     onClick={async () => {
                       try {
-                        // Find order with token 6
-                        const targetOrder = orders.find(order => order.tokenNumber === 6);
+                        // Find order with token 7
+                        const targetOrder = orders.find(order => order.tokenNumber === 7);
                         if (targetOrder) {
                           console.log('Setting estimated time for order:', targetOrder);
-                          await updateEstimatedTime(targetOrder._id, '15 minutes');
-                          alert('Estimated time set to "15 minutes" for Token #6');
+                          await updateEstimatedTime(targetOrder._id, '15');
+                          alert('Estimated time set to "15" for Token #7');
                         } else {
-                          alert('Token #6 not found. Available tokens: ' + orders.map(o => o.tokenNumber).join(', '));
+                          alert('Token #7 not found. Available tokens: ' + orders.map(o => o.tokenNumber).join(', '));
                         }
                       } catch (error) {
                         console.error('Error setting estimated time:', error);
@@ -2324,7 +2334,7 @@ const KhanaLineupApp = () => {
                     }}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium mr-3"
                   >
-                    Set Estimated Time for Token #6
+                    Set Estimated Time for Token #7
                   </button>
                   <button
                     onClick={() => {
