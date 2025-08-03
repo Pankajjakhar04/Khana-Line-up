@@ -863,6 +863,18 @@ const KhanaLineupApp = () => {
                   </div>
                 </div>
                 
+                {/* Debug info for estimated time - only visible in console */}
+                {(() => {
+                  console.log('Order debug:', {
+                    tokenId: order.tokenId,
+                    estimatedTime: order.estimatedTime,
+                    estimatedTimeType: typeof order.estimatedTime,
+                    status: order.status,
+                    shouldShow: (order.estimatedTime !== undefined && order.estimatedTime !== null && Number(order.estimatedTime) > 0) && order.status !== 'completed' && order.status !== 'cancelled'
+                  });
+                  return null;
+                })()}
+                
                 {(order.estimatedTime !== undefined && order.estimatedTime !== null && Number(order.estimatedTime) > 0) && order.status !== 'completed' && order.status !== 'cancelled' && (
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4">
                     <div className="flex items-center gap-2">
