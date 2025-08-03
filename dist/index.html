@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Khana Line-up - Food Ordering System</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background-color: #f8f9fa;
+      }
+      .fallback {
+        display: none;
+        padding: 40px;
+        text-align: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: rgba(255,255,255,0.1);
+        padding: 40px;
+        border-radius: 20px;
+        -webkit-backdrop-filter: blur(10px);
+                backdrop-filter: blur(10px);
+      }
+      .btn {
+        display: inline-block;
+        padding: 15px 30px;
+        margin: 10px;
+        background: rgba(255,255,255,0.2);
+        color: white;
+        text-decoration: none;
+        border-radius: 10px;
+        border: 2px solid rgba(255,255,255,0.3);
+        transition: all 0.3s ease;
+      }
+      .btn:hover {
+        background: rgba(255,255,255,0.3);
+        transform: translateY(-2px);
+      }
+      .status {
+        background: rgba(76, 175, 80, 0.2);
+        border: 2px solid rgba(76, 175, 80, 0.5);
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-84bdfb6d.js"></script>
+  </head>
+  <body>
+    <div id="root">
+      <!-- Fallback content that shows immediately if React fails -->
+      <div class="fallback" id="fallback">
+        <div class="container">
+          <h1>🍽️ Khana Line-up</h1>
+          <h2>Food Ordering System</h2>
+          
+          <div class="status">
+            <h3>✅ SYSTEM STATUS: WORKING</h3>
+            <p>This page loaded successfully! React is being initialized...</p>
+            <p id="timestamp"></p>
+          </div>
+          
+          <div>
+            <a href="/api/test" class="btn">🔧 Test Backend API</a>
+            <a href="/api/users" class="btn">👥 Check Users API</a>
+            <a href="/test.html" class="btn">🔍 Debug Page</a>
+          </div>
+          
+          <div style="margin-top: 30px; font-size: 14px; opacity: 0.8;">
+            <p>If you can see this page, the deployment is working.</p>
+            <p>If React fails to load, this fallback will remain visible.</p>
+            <p><strong>Current Status:</strong> <span id="status">Loading React...</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <script>
+      // Show fallback immediately
+      document.getElementById('fallback').style.display = 'block';
+      document.getElementById('timestamp').textContent = 'Loaded at: ' + new Date().toLocaleString();
+      
+      // Hide fallback after 3 seconds if React loads successfully
+      setTimeout(() => {
+        const root = document.getElementById('root');
+        if (root && root.children.length > 1) {
+          // React has loaded and added content
+          document.getElementById('fallback').style.display = 'none';
+        } else {
+          // React failed to load
+          document.getElementById('status').textContent = 'React failed to load - using fallback';
+          console.error('React failed to load within 3 seconds');
+        }
+      }, 3000);
+      
+      // Check if React script loads
+      window.addEventListener('load', () => {
+        console.log('✅ Page loaded, React should be initializing...');
+        setTimeout(() => {
+          const root = document.getElementById('root');
+          if (root && root.children.length > 1) {
+            // React has loaded and added content
+            document.getElementById('fallback').style.display = 'none';
+            console.log('✅ React took over successfully');
+          } else {
+            // React failed to load
+            document.getElementById('status').textContent = 'React failed to load - using fallback';
+            console.error('React failed to load within 5 seconds');
+          }
+        }, 5000);
+      });
+    </script>
+    
+  </body>
+</html>

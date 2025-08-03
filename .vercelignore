@@ -1,0 +1,33 @@
+# Development files
+.env.local
+.env.development
+.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE files
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Development dependencies
+node_modules
+
+# Build cache
+.next
+.nuxt
+.cache
+
+# Testing
+coverage
+
+# Local development
+server/cleanup-*.js
+server/test-connection.js
