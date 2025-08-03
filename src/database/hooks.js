@@ -311,16 +311,22 @@ export const useOrders = () => {
     }
   };
 
-  const updateOrderStatus = async (orderId, status) => {
+  const updateOrderStatus = async (orderId, statusOrData) => {
     try {
-      console.log('Updating order status via API:', orderId, status);
-      const response = await apiService.updateOrderStatus(orderId, { status });
+      console.log('Updating order status via API:', orderId, statusOrData);
+      
+      // Handle both old format (just status string) and new format (data object)
+      const statusData = typeof statusOrData === 'string' 
+        ? { status: statusOrData } 
+        : statusOrData;
+      
+      const response = await apiService.updateOrderStatus(orderId, statusData);
       console.log('Order status updated via API:', response);
       setOrders(prev => prev.map(order => {
         const orderIdMatch = order._id === orderId || order.id === orderId;
         if (orderIdMatch) {
           // Use the full updated order from the API response to preserve all fields including estimatedTime
-          return response.order || { ...order, status };
+          return response.order || { ...order, ...statusData };
         }
         return order;
       }));

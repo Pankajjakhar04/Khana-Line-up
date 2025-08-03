@@ -949,7 +949,17 @@ const KhanaLineupApp = () => {
 
     const handleOrderStatusUpdate = async (orderId, newStatus) => {
       try {
-        await updateOrderStatus(orderId, newStatus);
+        // Get the estimated time for this order from local state
+        const estimatedTime = estimatedTimes[orderId];
+        const statusData = { status: newStatus };
+        
+        // Include estimated time if it exists
+        if (estimatedTime !== undefined && estimatedTime !== '' && estimatedTime !== null) {
+          statusData.estimatedTime = parseInt(estimatedTime) || 0;
+        }
+        
+        console.log('Updating order status with data:', statusData);
+        await updateOrderStatus(orderId, statusData);
 
         if (newStatus === 'ready') {
           const order = orders.find(o => (o._id || o.id) === orderId);
