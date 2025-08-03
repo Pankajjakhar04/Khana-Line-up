@@ -2363,22 +2363,45 @@ const KhanaLineupApp = () => {
     const [showPassword, setShowPassword] = useState({});
     
     const allUsers = [...Object.values(defaultUsers), ...registeredUsers];
+    console.log('allUsers structure:', allUsers);
 
     const startEditUser = (user) => {
+      console.log('startEditUser called with user:', user);
       setEditingUser(user.id);
       setEditUserData({ ...user });
     };
 
-    const saveUserEdit = () => {
+    const saveUserEdit = async () => {
+      console.log('saveUserEdit called:', { editingUser, editUserData });
+      
       // Only allow editing of registered users, not default users
       if (!Object.values(defaultUsers).find(u => u.id === editingUser)) {
-        // Update user in database
-        updateUser(editingUser, editUserData);
-        
+        try {
+          console.log('Calling updateUser with:', editingUser, editUserData);
+          // Update user in database
+          await updateUser(editingUser, editUserData);
+          
+          setNotifications([...notifications, {
+            id: Date.now(),
+            message: 'User updated successfully!',
+            type: 'success',
+            timestamp: new Date().toISOString()
+          }]);
+        } catch (error) {
+          console.error('Error updating user:', error);
+          setNotifications([...notifications, {
+            id: Date.now(),
+            message: 'Failed to update user: ' + error.message,
+            type: 'error',
+            timestamp: new Date().toISOString()
+          }]);
+        }
+      } else {
+        console.log('Cannot edit default user');
         setNotifications([...notifications, {
           id: Date.now(),
-          message: 'User updated successfully!',
-          type: 'success',
+          message: 'Cannot edit default users',
+          type: 'error',
           timestamp: new Date().toISOString()
         }]);
       }
