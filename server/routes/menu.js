@@ -151,10 +151,11 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Check if item with same name exists for this vendor
+    // Check if item with same name exists for this vendor (only active items)
     const existingItem = await MenuItem.findOne({
       name: itemData.name,
-      vendor: itemData.vendor
+      vendor: itemData.vendor,
+      isActive: true  // Only check active items
     });
 
     if (existingItem) {
@@ -197,6 +198,34 @@ router.put('/:id', async (req, res) => {
     delete updates.vendor;
     delete updates.createdAt;
     delete updates.updatedAt;
+
+    // If name is being updated, check for conflicts with active items
+    if (updates.name) {
+      const currentItem = await MenuItem.findById(req.params.id);
+      if (!currentItem) {
+        return res.status(404).json({
+          success: false,
+          message: 'Menu item not found'
+        });
+      }
+
+      // Only check if the name is actually changing
+      if (updates.name !== currentItem.name) {
+        const existingItem = await MenuItem.findOne({
+          name: updates.name,
+          vendor: currentItem.vendor,
+          isActive: true,
+          _id: { $ne: req.params.id } // Exclude current item
+        });
+
+        if (existingItem) {
+          return res.status(400).json({
+            success: false,
+            message: 'An item with this name already exists in your menu'
+          });
+        }
+      }
+    }
 
     const item = await MenuItem.findByIdAndUpdate(
       req.params.id,
