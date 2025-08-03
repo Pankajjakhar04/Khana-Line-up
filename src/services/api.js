@@ -101,6 +101,24 @@ class ApiService {
     });
   }
 
+  // Vendor approval methods
+  async getPendingVendors() {
+    return this.request('/auth/pending-vendors');
+  }
+
+  async approveVendor(vendorId, adminId) {
+    return this.request(`/auth/approve-vendor/${vendorId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ adminId })
+    });
+  }
+
+  async rejectVendor(vendorId) {
+    return this.request(`/auth/reject-vendor/${vendorId}`, {
+      method: 'DELETE'
+    });
+  }
+
   // Menu methods
   async getMenuItems() {
     return this.request('/menu');
@@ -242,6 +260,9 @@ export const {
   getUserById,
   updateUser,
   deleteUser,
+  getPendingVendors,
+  approveVendor,
+  rejectVendor,
   
   // Menu methods
   getMenuItems,

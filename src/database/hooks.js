@@ -141,6 +141,88 @@ export const useUsers = () => {
   };
 };
 
+// Custom hook for vendor approvals
+export const useVendorApprovals = () => {
+  const [pendingVendors, setPendingVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadPendingVendors();
+  }, []);
+
+  const loadPendingVendors = async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.getPendingVendors();
+      
+      if (response.success) {
+        setPendingVendors(response.vendors || []);
+      } else {
+        console.error('Failed to load pending vendors:', response.message);
+        setPendingVendors([]);
+      }
+    } catch (error) {
+      console.error('Error loading pending vendors:', error);
+      setPendingVendors([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const approveVendor = async (vendorId, adminId) => {
+    try {
+      console.log('Approving vendor:', vendorId, 'by admin:', adminId);
+      const response = await apiService.approveVendor(vendorId, adminId);
+      console.log('Approve vendor response:', response);
+      
+      if (response.success) {
+        // Remove from pending list
+        setPendingVendors(prev => prev.filter(vendor => vendor._id !== vendorId));
+        return true;
+      } else {
+        console.error('Failed to approve vendor:', response.message);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error approving vendor:', error);
+      return false;
+    }
+  };
+
+  const rejectVendor = async (vendorId) => {
+    try {
+      console.log('Rejecting vendor:', vendorId);
+      const response = await apiService.rejectVendor(vendorId);
+      console.log('Reject vendor response:', response);
+      
+      if (response.success) {
+        // Remove from pending list
+        setPendingVendors(prev => prev.filter(vendor => vendor._id !== vendorId));
+        return true;
+      } else {
+        console.error('Failed to reject vendor:', response.message);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error rejecting vendor:', error);
+      return false;
+    }
+  };
+
+  const refreshPendingVendors = async () => {
+    console.log('Force refreshing pending vendors...');
+    await loadPendingVendors();
+  };
+
+  return {
+    pendingVendors,
+    loading,
+    approveVendor,
+    rejectVendor,
+    refreshPendingVendors
+  };
+};
+
 // Custom hook for menu items
 export const useMenuItems = () => {
   const [menuItems, setMenuItems] = useState([]);

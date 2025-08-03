@@ -49,6 +49,17 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  isApproved: {
+    type: Boolean,
+    default: true  // Will be explicitly set to false for vendors in registration route
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  approvedAt: {
+    type: Date
+  },
   lastLogin: {
     type: Date
   },

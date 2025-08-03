@@ -45,8 +45,22 @@ router.post('/register', async (req, res) => {
 
     if (phone) userData.phone = phone;
 
+    // Set approval status based on role
+    // Vendors need approval, customers and admins are auto-approved
+    userData.isApproved = (role !== 'vendor');
+    
+    console.log('Registration userData:', { ...userData, password: '[HIDDEN]' });
+    console.log('Role:', role, 'isApproved:', userData.isApproved);
+
     const user = new User(userData);
     await user.save();
+    
+    console.log('Saved user:', { 
+      id: user._id, 
+      email: user.email, 
+      role: user.role, 
+      isApproved: user.isApproved 
+    });
 
     // Remove password from response
     const userResponse = user.toObject();
@@ -98,6 +112,17 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({
         success: false,
         message: 'Account is deactivated. Please contact support.'
+      });
+    }
+
+    // Check if vendor is approved (only for vendors)
+    console.log('Login attempt - User role:', user.role, 'isApproved:', user.isApproved);
+    if (user.role === 'vendor' && !user.isApproved) {
+      console.log('Vendor login blocked - pending approval');
+      return res.status(403).json({
+        success: false,
+        message: 'Your vendor account is pending approval. Please wait for admin approval.',
+        errorType: 'VENDOR_PENDING_APPROVAL'
       });
     }
 
@@ -391,6 +416,120 @@ router.post('/reset-database', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error resetting database',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   GET /api/auth/pending-vendors
+// @desc    Get all pending vendor approvals
+// @access  Admin only
+router.get('/pending-vendors', async (req, res) => {
+  try {
+    const pendingVendors = await User.find({
+      role: 'vendor',
+      isActive: true,
+      isApproved: false
+    }).select('-password').sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: pendingVendors.length,
+      vendors: pendingVendors
+    });
+
+  } catch (error) {
+    console.error('Get pending vendors error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching pending vendors',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   PUT /api/auth/approve-vendor/:id
+// @desc    Approve a vendor account
+// @access  Admin only
+router.put('/approve-vendor/:id', async (req, res) => {
+  try {
+    const { adminId } = req.body;
+
+    const vendor = await User.findByIdAndUpdate(
+      req.params.id,
+      {
+        isApproved: true,
+        approvedBy: adminId,
+        approvedAt: new Date()
+      },
+      { new: true }
+    ).select('-password');
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vendor not found'
+      });
+    }
+
+    if (vendor.role !== 'vendor') {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not a vendor'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Vendor approved successfully',
+      vendor
+    });
+
+  } catch (error) {
+    console.error('Approve vendor error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error approving vendor',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   DELETE /api/auth/reject-vendor/:id
+// @desc    Reject a vendor account (delete from database)
+// @access  Admin only
+router.delete('/reject-vendor/:id', async (req, res) => {
+  try {
+    const vendor = await User.findById(req.params.id);
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vendor not found'
+      });
+    }
+
+    if (vendor.role !== 'vendor') {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not a vendor'
+      });
+    }
+
+    // Delete the vendor from database completely
+    await User.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Vendor rejected and removed from database',
+      deletedVendorId: req.params.id
+    });
+
+  } catch (error) {
+    console.error('Reject vendor error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error rejecting vendor',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

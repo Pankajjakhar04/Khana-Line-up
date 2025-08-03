@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X } from 'lucide-react';
-import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase } from './database/hooks.js';
+import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 
 const KhanaLineupApp = () => {
@@ -11,12 +11,33 @@ const KhanaLineupApp = () => {
   const { settings, updateSettings } = useSettings();
   const analytics = useAnalytics();
   const database = useDatabase();
+  const { pendingVendors, approveVendor, rejectVendor, refreshPendingVendors } = useVendorApprovals();
 
   // Debug: Log users on app load
   useEffect(() => {
     console.log('App loaded, users available:', users);
     console.log('Admin user check:', users.admin1);
   }, [users]);
+
+  // Debug: Add global debug function
+  useEffect(() => {
+    window.debugVendorApprovals = {
+      pendingVendors,
+      refreshPendingVendors,
+      testAPI: async () => {
+        try {
+          console.log('🧪 Testing API directly...');
+          const response = await fetch('http://localhost:5000/api/auth/pending-vendors');
+          const data = await response.json();
+          console.log('🧪 Direct API response:', data);
+          return data;
+        } catch (error) {
+          console.error('🧪 Direct API error:', error);
+          return error;
+        }
+      }
+    };
+  }, [pendingVendors, refreshPendingVendors]);
 
   // State management
   const [currentUser, setCurrentUser] = useState(null);
@@ -221,7 +242,12 @@ const KhanaLineupApp = () => {
           setErrors({ 
             email: 'Email not found. Would you like to register instead?' 
           });
-          // You could also add logic here to show a "Go to Registration" button
+        } else if (error.errorType === 'VENDOR_PENDING_APPROVAL' || 
+                   (error.status === 403 && error.data && error.data.errorType === 'VENDOR_PENDING_APPROVAL') ||
+                   (error.message && error.message.includes('pending approval'))) {
+          setErrors({ 
+            email: 'Your vendor account is pending approval. Please wait for admin approval to login.' 
+          });
         } else {
           setErrors({ email: 'Invalid email or password' });
         }
@@ -415,6 +441,7 @@ const KhanaLineupApp = () => {
       admin: [
         { id: 'dashboard', label: 'Dashboard', icon: Settings },
         { id: 'users', label: 'Users', icon: Users },
+        { id: 'vendor-approvals', label: 'Vendor Approvals', icon: UserPlus },
         { id: 'orders', label: 'Order Management', icon: Package }
       ]
     };
@@ -455,6 +482,11 @@ const KhanaLineupApp = () => {
                     {item.id === 'cart' && cart.length > 0 && (
                       <span className="bg-red-500 text-white rounded-full px-2 py-1 text-xs animate-pulse">
                         {cart.length}
+                      </span>
+                    )}
+                    {item.id === 'vendor-approvals' && pendingVendors.length > 0 && (
+                      <span className="bg-orange-500 text-white rounded-full px-2 py-1 text-xs animate-pulse">
+                        {pendingVendors.length}
                       </span>
                     )}
                   </button>
@@ -2385,6 +2417,44 @@ const KhanaLineupApp = () => {
     );
   };
 
+  // Vendor Approval Handlers
+  const handleApproveVendor = async (vendorId) => {
+    try {
+      const success = await approveVendor(vendorId, currentUser.id);
+      if (success) {
+        alert('Vendor approved successfully!');
+        // Refresh user list and pending vendors
+        refreshUsers();
+        refreshPendingVendors();
+      } else {
+        alert('Failed to approve vendor.');
+      }
+    } catch (error) {
+      console.error('Error approving vendor:', error);
+      alert('Failed to approve vendor. Please try again.');
+    }
+  };
+
+  const handleRejectVendor = async (vendorId) => {
+    const vendor = pendingVendors.find(v => v._id === vendorId);
+    if (confirm(`Are you sure you want to reject vendor: ${vendor?.name}? This will permanently delete their account from the database.`)) {
+      try {
+        const success = await rejectVendor(vendorId);
+        if (success) {
+          alert('Vendor rejected and permanently deleted!');
+          // Refresh user list and pending vendors
+          refreshUsers();
+          refreshPendingVendors();
+        } else {
+          alert('Failed to reject vendor.');
+        }
+      } catch (error) {
+        console.error('Error rejecting vendor:', error);
+        alert('Failed to reject vendor. Please try again.');
+      }
+    }
+  };
+
   // Users Management View
   const UsersView = () => {
     const [editingUser, setEditingUser] = useState(null);
@@ -2616,6 +2686,96 @@ const KhanaLineupApp = () => {
     );
   };
 
+  // Vendor Approvals View Component
+  const VendorApprovalsView = () => {
+    return (
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-3xl font-bold text-gray-800">Vendor Approval Requests</h2>
+          <button
+            onClick={() => {
+              console.log('🔄 Manual refresh clicked');
+              refreshPendingVendors();
+            }}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+          >
+            <Settings size={16} />
+            Refresh
+          </button>
+        </div>
+        
+        {pendingVendors.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+            <UserPlus size={64} className="mx-auto text-gray-300 mb-4" />
+            <h3 className="text-xl font-semibold text-gray-600 mb-2">No Pending Requests</h3>
+            <p className="text-gray-500">All vendor applications have been processed.</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-semibold">Pending Vendor Registrations ({pendingVendors.length})</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Name</th>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Email</th>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Restaurant Name</th>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Phone</th>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Registration Date</th>
+                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {pendingVendors.map((vendor) => (
+                    <tr key={vendor._id} className="hover:bg-gray-50">
+                      <td className="py-4 px-6">
+                        <div className="font-medium text-gray-900">{vendor.name}</div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-gray-600">{vendor.email}</div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-gray-600">{vendor.restaurantName || 'Not specified'}</div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-gray-600">{vendor.phone || 'Not provided'}</div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-gray-600">
+                          {new Date(vendor.createdAt).toLocaleDateString()}
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleApproveVendor(vendor._id)}
+                            className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors text-sm flex items-center gap-1"
+                          >
+                            <CheckCircle size={16} />
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleRejectVendor(vendor._id)}
+                            className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors text-sm flex items-center gap-1"
+                          >
+                            <X size={16} />
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Main render logic
   if (!currentUser) {
     // Show loading screen while checking authentication
@@ -2658,6 +2818,8 @@ const KhanaLineupApp = () => {
         return <AdminDashboard />;
       case 'users':
         return <UsersView />;
+      case 'vendor-approvals':
+        return <VendorApprovalsView />;
       case 'profile':
         return <ProfileView />;
       default:
