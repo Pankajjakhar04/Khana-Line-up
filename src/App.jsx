@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X } from 'lucide-react';
+import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu } from 'lucide-react';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 
@@ -120,12 +120,16 @@ const KhanaLineupApp = () => {
   
   // Profile dropdown state
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // Close profile dropdown when clicking outside
+  // Close profile dropdown and mobile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (showProfileDropdown && !event.target.closest('.profile-dropdown')) {
         setShowProfileDropdown(false);
+      }
+      if (showMobileMenu && !event.target.closest('.mobile-menu-container')) {
+        setShowMobileMenu(false);
       }
     };
 
@@ -133,7 +137,7 @@ const KhanaLineupApp = () => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showProfileDropdown]);
+  }, [showProfileDropdown, showMobileMenu]);
 
   // Legacy support for existing code
   const registeredUsers = Object.values(users);
@@ -447,7 +451,7 @@ const KhanaLineupApp = () => {
     };
 
     return (
-      <nav className="bg-white shadow-xl sticky top-0 z-50">
+      <nav className="bg-white shadow-xl sticky top-0 z-50 mobile-menu-container">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center gap-3">
@@ -455,7 +459,7 @@ const KhanaLineupApp = () => {
                 <Store className="text-white" size={24} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
+                <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
                   Khana Line-up
                 </h1>
                 <span className="bg-gray-100 px-2 py-1 rounded-full text-xs capitalize font-medium">
@@ -464,6 +468,7 @@ const KhanaLineupApp = () => {
               </div>
             </div>
             
+            {/* Desktop Navigation */}
             <div className="hidden md:flex space-x-2">
               {navItems[currentRole]?.map(item => {
                 const Icon = item.icon;
@@ -494,36 +499,86 @@ const KhanaLineupApp = () => {
               })}
             </div>
 
-            <div className="relative profile-dropdown">
+            {/* Mobile and Profile Section */}
+            <div className="flex items-center gap-2">
+              {/* Mobile Menu Button */}
               <button
-                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-                className="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100 transition-all duration-300 flex items-center gap-2"
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className="md:hidden text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100 transition-all duration-300"
               >
-                <User size={20} />
-                <span className="hidden sm:block text-sm font-medium">{currentUser?.name}</span>
+                <Menu size={24} />
               </button>
-              
-              {showProfileDropdown && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                  <button
-                    onClick={handleProfile}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                  >
-                    <User size={16} />
-                    Profile
-                  </button>
-                  <hr className="my-1" />
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                  >
-                    <LogIn size={16} />
-                    Logout
-                  </button>
-                </div>
-              )}
+
+              {/* Profile Dropdown */}
+              <div className="relative profile-dropdown">
+                <button
+                  onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                  className="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100 transition-all duration-300 flex items-center gap-2"
+                >
+                  <User size={20} />
+                  <span className="hidden sm:block text-sm font-medium">{currentUser?.name}</span>
+                </button>
+                
+                {showProfileDropdown && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <button
+                      onClick={handleProfile}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <User size={16} />
+                      Profile
+                    </button>
+                    <hr className="my-1" />
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <LogIn size={16} />
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
+          {/* Mobile Navigation Menu */}
+          {showMobileMenu && (
+            <div className="md:hidden border-t border-gray-200 py-4">
+              <div className="space-y-2">
+                {navItems[currentRole]?.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setShowMobileMenu(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${
+                        activeTab === item.id 
+                          ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg' 
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Icon size={20} />
+                      <span>{item.label}</span>
+                      {item.id === 'cart' && cart.length > 0 && (
+                        <span className="bg-red-500 text-white rounded-full px-2 py-1 text-xs animate-pulse ml-auto">
+                          {cart.length}
+                        </span>
+                      )}
+                      {item.id === 'vendor-approvals' && pendingVendors.length > 0 && (
+                        <span className="bg-orange-500 text-white rounded-full px-2 py-1 text-xs animate-pulse ml-auto">
+                          {pendingVendors.length}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </nav>
     );
@@ -643,12 +698,12 @@ const KhanaLineupApp = () => {
         {cart.length > 0 && (
           <button
             onClick={() => setActiveTab('cart')}
-            className={`fixed bottom-6 right-6 bg-gradient-to-r from-orange-500 to-red-500 text-white p-4 rounded-full shadow-2xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 transform hover:scale-110 z-50 ${
+            className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 bg-gradient-to-r from-orange-500 to-red-500 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 transform hover:scale-110 z-50 ${
               showCart ? 'animate-bounce' : ''
             }`}
           >
-            <ShoppingCart size={24} />
-            <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full px-2 py-1 text-xs animate-pulse">
+            <ShoppingCart size={20} className="sm:w-6 sm:h-6" />
+            <span className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-500 text-white rounded-full px-1.5 py-0.5 sm:px-2 sm:py-1 text-xs animate-pulse min-w-[20px] text-center">
               {cart.length}
             </span>
           </button>
@@ -2690,8 +2745,8 @@ const KhanaLineupApp = () => {
   const VendorApprovalsView = () => {
     return (
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-3xl font-bold text-gray-800">Vendor Approval Requests</h2>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Vendor Approval Requests</h2>
           <button
             onClick={() => {
               console.log('🔄 Manual refresh clicked');
@@ -2705,72 +2760,126 @@ const KhanaLineupApp = () => {
         </div>
         
         {pendingVendors.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <UserPlus size={64} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-600 mb-2">No Pending Requests</h3>
+          <div className="bg-white rounded-2xl shadow-lg p-8 sm:p-12 text-center">
+            <UserPlus size={48} className="mx-auto text-gray-300 mb-4 sm:w-16 sm:h-16" />
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-600 mb-2">No Pending Requests</h3>
             <p className="text-gray-500">All vendor applications have been processed.</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl font-semibold">Pending Vendor Registrations ({pendingVendors.length})</h3>
+          <>
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-4">
+              {pendingVendors.map((vendor) => (
+                <div key={vendor._id} className="bg-white rounded-2xl shadow-lg p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">{vendor.name}</h3>
+                      <p className="text-sm text-gray-600">{vendor.email}</p>
+                    </div>
+                    <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-full text-xs font-medium">
+                      Pending
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-2 mb-4">
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-gray-500">Restaurant:</span>
+                      <span className="text-sm text-gray-900">{vendor.restaurantName || 'Not specified'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-gray-500">Phone:</span>
+                      <span className="text-sm text-gray-900">{vendor.phone || 'Not provided'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-gray-500">Registered:</span>
+                      <span className="text-sm text-gray-900">
+                        {new Date(vendor.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleApproveVendor(vendor._id)}
+                      className="flex-1 bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 transition-colors text-sm flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle size={16} />
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleRejectVendor(vendor._id)}
+                      className="flex-1 bg-red-500 text-white py-3 rounded-lg hover:bg-red-600 transition-colors text-sm flex items-center justify-center gap-2"
+                    >
+                      <X size={16} />
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Name</th>
-                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Email</th>
-                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Restaurant Name</th>
-                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Phone</th>
-                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Registration Date</th>
-                    <th className="text-left py-4 px-6 font-semibold text-gray-700">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {pendingVendors.map((vendor) => (
-                    <tr key={vendor._id} className="hover:bg-gray-50">
-                      <td className="py-4 px-6">
-                        <div className="font-medium text-gray-900">{vendor.name}</div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-gray-600">{vendor.email}</div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-gray-600">{vendor.restaurantName || 'Not specified'}</div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-gray-600">{vendor.phone || 'Not provided'}</div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-gray-600">
-                          {new Date(vendor.createdAt).toLocaleDateString()}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleApproveVendor(vendor._id)}
-                            className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors text-sm flex items-center gap-1"
-                          >
-                            <CheckCircle size={16} />
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => handleRejectVendor(vendor._id)}
-                            className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors text-sm flex items-center gap-1"
-                          >
-                            <X size={16} />
-                            Reject
-                          </button>
-                        </div>
-                      </td>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-xl font-semibold">Pending Vendor Registrations ({pendingVendors.length})</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left py-4 px-6 font-semibold text-gray-700">Name</th>
+                      <th className="text-left py-4 px-6 font-semibold text-gray-700">Email</th>
+                      <th className="text-left py-4 px-6 font-semibold text-gray-700">Restaurant Name</th>
+                      <th className="text-left py-4 px-6 font-semibold text-gray-700">Phone</th>
+                      <th className="text-left py-4 px-6 font-semibold text-gray-700">Registration Date</th>
+                      <th className="text-left py-4 px-6 font-semibold text-gray-700">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {pendingVendors.map((vendor) => (
+                      <tr key={vendor._id} className="hover:bg-gray-50">
+                        <td className="py-4 px-6">
+                          <div className="font-medium text-gray-900">{vendor.name}</div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="text-gray-600">{vendor.email}</div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="text-gray-600">{vendor.restaurantName || 'Not specified'}</div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="text-gray-600">{vendor.phone || 'Not provided'}</div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="text-gray-600">
+                            {new Date(vendor.createdAt).toLocaleDateString()}
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleApproveVendor(vendor._id)}
+                              className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors text-sm flex items-center gap-1"
+                            >
+                              <CheckCircle size={16} />
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectVendor(vendor._id)}
+                              className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors text-sm flex items-center gap-1"
+                            >
+                              <X size={16} />
+                              Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     );
@@ -2833,17 +2942,17 @@ const KhanaLineupApp = () => {
       
       {/* Notifications */}
       {notifications.length > 0 && currentRole === 'customer' && (
-        <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white p-4 shadow-lg">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="animate-pulse">
-                <Bell size={20} />
+        <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white p-3 sm:p-4 shadow-lg">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+              <div className="animate-pulse flex-shrink-0">
+                <Bell size={18} className="sm:w-5 sm:h-5" />
               </div>
-              <p className="font-medium">{notifications[notifications.length - 1].message}</p>
+              <p className="font-medium text-sm sm:text-base truncate">{notifications[notifications.length - 1].message}</p>
             </div>
             <button
               onClick={() => setNotifications([])}
-              className="text-white hover:text-green-100 transition-colors"
+              className="text-white hover:text-green-100 transition-colors text-xl sm:text-2xl flex-shrink-0 w-6 h-6 flex items-center justify-center"
             >
               ×
             </button>
