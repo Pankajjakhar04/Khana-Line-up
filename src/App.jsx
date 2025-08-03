@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu } from 'lucide-react';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
@@ -596,7 +596,7 @@ const KhanaLineupApp = () => {
   const MenuView = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
 
-    const addToCart = useCallback((item) => {
+    const addToCart = (item) => {
       const existingItem = cart.find(cartItem => cartItem.id === item.id);
 
       if (existingItem) {
@@ -611,7 +611,7 @@ const KhanaLineupApp = () => {
       
       setShowCart(true);
       setTimeout(() => setShowCart(false), 3000);
-    }, [cart]);
+    };
 
     const filteredItems = useMemo(() => {
       return menuItems.filter(item => {
@@ -634,6 +634,9 @@ const KhanaLineupApp = () => {
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
+              key="menu-search-input"
+              id="menu-search-input"
+              name="menuSearch"
               type="text"
               placeholder="Search dishes..."
               value={searchQuery}
@@ -1374,6 +1377,9 @@ const KhanaLineupApp = () => {
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
+              key="vendor-search-input"
+              id="vendor-search-input"
+              name="vendorSearch"
               type="text"
               placeholder="Search menu items..."
               value={vendorSearchQuery}
