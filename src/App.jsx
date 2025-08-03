@@ -1,7 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu } from 'lucide-react';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
+
+// Memoized Search Input Component with stable reference
+const SearchInput = memo(({ value, onChange, placeholder, searchKey, inputRef }) => {
+  return (
+    <div className="relative w-full sm:w-80">
+      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        autoComplete="off"
+        autoFocus={false}
+        key={searchKey}
+        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+      />
+    </div>
+  );
+});
 
 const KhanaLineupApp = () => {
   // Database hooks
@@ -43,6 +63,10 @@ const KhanaLineupApp = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentRole, setCurrentRole] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // Search input refs to maintain focus
+  const customerSearchRef = useRef(null);
+  const vendorSearchRef = useRef(null);
 
   // Authentication persistence - check for saved login on app load
   useEffect(() => {
@@ -143,13 +167,15 @@ const KhanaLineupApp = () => {
   const registeredUsers = Object.values(users);
   const defaultUsers = {};
 
-  // Memoized search handlers to prevent component re-renders
+  // Memoized search handlers to prevent component re-renders - with stable references
   const handleSearchQueryChange = useCallback((e) => {
-    setSearchQuery(e.target.value);
+    const value = e.target.value;
+    setSearchQuery(value);
   }, []);
 
   const handleVendorSearchQueryChange = useCallback((e) => {
-    setVendorSearchQuery(e.target.value);
+    const value = e.target.value;
+    setVendorSearchQuery(value);
   }, []);
 
   // Token counter from settings
@@ -594,7 +620,7 @@ const KhanaLineupApp = () => {
   };
 
   // Customer Menu View
-  const MenuView = () => {
+  const MenuView = memo(() => {
     const [selectedCategory, setSelectedCategory] = useState('all');
 
     const addToCart = (item) => {
@@ -628,19 +654,13 @@ const KhanaLineupApp = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <h2 className="text-3xl font-bold text-gray-800">Our Menu</h2>
           
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="Search dishes..."
-              value={searchQuery}
-              onChange={handleSearchQueryChange}
-              autoComplete="off"
-              autoFocus={false}
-              key="customer-search"
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
-            />
-          </div>
+          <SearchInput
+            value={searchQuery}
+            onChange={handleSearchQueryChange}
+            placeholder="Search dishes..."
+            searchKey="customer-search-stable"
+            inputRef={customerSearchRef}
+          />
         </div>
 
         <div className="flex flex-wrap gap-2 mb-8">
@@ -721,7 +741,7 @@ const KhanaLineupApp = () => {
         )}
       </div>
     );
-  };
+  });
 
   // Cart View
   const CartView = () => {
@@ -1368,19 +1388,13 @@ const KhanaLineupApp = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <h2 className="text-3xl font-bold text-gray-800">Manage Menu</h2>
           
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="Search menu items..."
-              value={vendorSearchQuery}
-              onChange={handleVendorSearchQueryChange}
-              autoComplete="off"
-              autoFocus={false}
-              key="vendor-search"
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
-            />
-          </div>
+          <SearchInput
+            value={vendorSearchQuery}
+            onChange={handleVendorSearchQueryChange}
+            placeholder="Search menu items..."
+            searchKey="vendor-search-stable"
+            inputRef={vendorSearchRef}
+          />
         </div>
         
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
