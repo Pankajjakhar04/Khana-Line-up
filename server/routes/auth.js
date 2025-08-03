@@ -1,4 +1,5 @@
 import express from 'express';
+import bcrypt from 'bcryptjs';
 import { User } from '../models/index.js';
 
 const router = express.Router();
@@ -199,9 +200,13 @@ router.put('/user/:id', async (req, res) => {
     const userId = req.params.id;
     const updates = req.body;
 
-    // Remove sensitive fields from updates
-    delete updates.password;
-    delete updates.role; // Role changes should be handled separately
+    // Handle password update if provided
+    if (updates.password) {
+      const salt = await bcrypt.genSalt(10);
+      updates.password = await bcrypt.hash(updates.password, salt);
+    }
+
+    // Remove MongoDB internal fields
     delete updates._id;
 
     const user = await User.findByIdAndUpdate(
@@ -219,7 +224,7 @@ router.put('/user/:id', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Profile updated successfully',
+      message: 'User updated successfully',
       user
     });
 
