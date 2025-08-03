@@ -3,39 +3,6 @@ import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Tra
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 
-// Completely isolated search input component
-const SearchInput = memo(({ value, onChange, placeholder, searchKey }) => {
-  const inputRef = useRef(null);
-  
-  // Handle changes with stable reference
-  const handleChange = useCallback((e) => {
-    onChange(e.target.value);
-  }, [onChange]);
-  
-  return (
-    <div className="relative w-full sm:w-80">
-      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-      <input
-        ref={inputRef}
-        id={searchKey}
-        name={searchKey}
-        type="text"
-        placeholder={placeholder}
-        value={value}
-        onChange={handleChange}
-        autoComplete="off"
-        autoFocus={false}
-        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
-      />
-    </div>
-  );
-}, (prevProps, nextProps) => {
-  // Custom comparison to prevent unnecessary re-renders
-  return prevProps.value === nextProps.value && 
-         prevProps.placeholder === nextProps.placeholder &&
-         prevProps.searchKey === nextProps.searchKey;
-});
-
 const KhanaLineupApp = () => {
   // Database hooks
   const { users, addUser, updateUser, deleteUser, getUserByCredentials, getUserByEmail, refreshUsers } = useUsers();
@@ -175,15 +142,6 @@ const KhanaLineupApp = () => {
   // Legacy support for existing code
   const registeredUsers = Object.values(users);
   const defaultUsers = {};
-
-  // Extremely stable search handlers with useCallback
-  const handleSearchQueryChange = useCallback((value) => {
-    setSearchQuery(value);
-  }, []);
-
-  const handleVendorSearchQueryChange = useCallback((value) => {
-    setVendorSearchQuery(value);
-  }, []);
 
   // Token counter from settings
   const tokenCounter = settings.tokenCounter || 1;
@@ -673,12 +631,17 @@ const KhanaLineupApp = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <h2 className="text-3xl font-bold text-gray-800">Our Menu</h2>
           
-          <SearchInput
-            value={searchQuery}
-            onChange={handleSearchQueryChange}
-            placeholder="Search dishes..."
-            searchKey="customer-search-stable"
-          />
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="Search dishes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoComplete="off"
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2 mb-8">
@@ -1408,12 +1371,17 @@ const KhanaLineupApp = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <h2 className="text-3xl font-bold text-gray-800">Manage Menu</h2>
           
-          <SearchInput
-            value={vendorSearchQuery}
-            onChange={handleVendorSearchQueryChange}
-            placeholder="Search menu items..."
-            searchKey="vendor-search-stable"
-          />
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="Search menu items..."
+              value={vendorSearchQuery}
+              onChange={(e) => setVendorSearchQuery(e.target.value)}
+              autoComplete="off"
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+            />
+          </div>
         </div>
         
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
