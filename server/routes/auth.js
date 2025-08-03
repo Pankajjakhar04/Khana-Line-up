@@ -86,9 +86,10 @@ router.post('/login', async (req, res) => {
     // Find user by email
     const user = await User.findByEmail(email);
     if (!user) {
-      return res.status(401).json({
+      return res.status(404).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Email not found. Please check your email or register for a new account.',
+        errorType: 'EMAIL_NOT_FOUND'
       });
     }
 

@@ -210,7 +210,19 @@ const KhanaLineupApp = () => {
         }
       } catch (error) {
         console.error('Login error:', error);
-        setErrors({ email: 'Invalid email or password' });
+        
+        // Check if it's an email not found error
+        if (error.message && error.message.includes('Email not found')) {
+          setErrors({ 
+            email: 'Email not found. Please register for a new account or check your email address.' 
+          });
+        } else if (error.response && error.response.status === 404) {
+          setErrors({ 
+            email: 'Email not found. Please register for a new account or check your email address.' 
+          });
+        } else {
+          setErrors({ email: 'Invalid email or password' });
+        }
       }
     };
 
@@ -275,7 +287,22 @@ const KhanaLineupApp = () => {
                   errors.email ? 'border-red-500' : 'border-gray-300'
                 }`}
               />
-              {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
+              {errors.email && (
+                <div className="mt-1">
+                  <p className="text-red-500 text-sm">{errors.email}</p>
+                  {errors.email.includes('Email not found') && (
+                    <p className="text-blue-600 text-sm mt-1">
+                      Don't have an account? 
+                      <button 
+                        onClick={() => setIsRegistering(true)}
+                        className="ml-1 underline hover:text-blue-800 font-medium"
+                      >
+                        Register here
+                      </button>
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             
             <div className="relative">

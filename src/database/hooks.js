@@ -112,9 +112,8 @@ export const useUsers = () => {
       return user;
     } catch (error) {
       console.error('Error authenticating user via API:', error);
-      // No fallback - only use MongoDB
-      console.error('Login failed. API connection required.');
-      throw new Error('Authentication failed. Please check server connection.');
+      // Re-throw the error with additional details for the frontend to handle
+      throw error;
     }
   };
 
