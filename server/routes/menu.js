@@ -404,6 +404,64 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// @route   PUT /api/menu/:id/restore
+// @desc    Restore deleted menu item
+// @access  Public (should be protected in production)
+router.put('/:id/restore', async (req, res) => {
+  try {
+    const item = await MenuItem.findById(req.params.id);
+    
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found'
+      });
+    }
+
+    if (item.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Menu item is already active'
+      });
+    }
+
+    // Check if restoring would create a name conflict
+    const existingActiveItem = await MenuItem.findOne({
+      name: item.name,
+      vendor: item.vendor,
+      isActive: true,
+      _id: { $ne: item._id }
+    });
+
+    if (existingActiveItem) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot restore: An active item with this name already exists in your menu'
+      });
+    }
+
+    // Restore the item
+    item.isActive = true;
+    await item.save();
+    
+    await item.populate('vendor', 'name email restaurantName');
+
+    res.json({
+      success: true,
+      message: 'Menu item restored successfully',
+      item
+    });
+
+  } catch (error) {
+    console.error('Restore menu item error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error restoring menu item',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 // @route   GET /api/menu/vendor/:vendorId
 // @desc    Get all menu items for a vendor
 // @access  Public
