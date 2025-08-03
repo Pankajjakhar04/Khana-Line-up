@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu } from 'lucide-react';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
@@ -142,6 +142,15 @@ const KhanaLineupApp = () => {
   // Legacy support for existing code
   const registeredUsers = Object.values(users);
   const defaultUsers = {};
+
+  // Memoized search handlers to prevent component re-renders
+  const handleSearchQueryChange = useCallback((e) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const handleVendorSearchQueryChange = useCallback((e) => {
+    setVendorSearchQuery(e.target.value);
+  }, []);
 
   // Token counter from settings
   const tokenCounter = settings.tokenCounter || 1;
@@ -625,8 +634,10 @@ const KhanaLineupApp = () => {
               type="text"
               placeholder="Search dishes..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={handleSearchQueryChange}
               autoComplete="off"
+              autoFocus={false}
+              key="customer-search"
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
           </div>
@@ -1363,8 +1374,10 @@ const KhanaLineupApp = () => {
               type="text"
               placeholder="Search menu items..."
               value={vendorSearchQuery}
-              onChange={(e) => setVendorSearchQuery(e.target.value)}
+              onChange={handleVendorSearchQueryChange}
               autoComplete="off"
+              autoFocus={false}
+              key="vendor-search"
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
           </div>
