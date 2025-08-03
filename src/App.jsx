@@ -3,8 +3,15 @@ import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Tra
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 
-// Memoized Search Input Component with stable reference
-const SearchInput = memo(({ value, onChange, placeholder, searchKey, inputRef }) => {
+// Completely isolated search input component
+const SearchInput = memo(({ value, onChange, placeholder, searchKey }) => {
+  const inputRef = useRef(null);
+  
+  // Handle changes with stable reference
+  const handleChange = useCallback((e) => {
+    onChange(e.target.value);
+  }, [onChange]);
+  
   return (
     <div className="relative w-full sm:w-80">
       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -15,14 +22,18 @@ const SearchInput = memo(({ value, onChange, placeholder, searchKey, inputRef })
         type="text"
         placeholder={placeholder}
         value={value}
-        onChange={onChange}
+        onChange={handleChange}
         autoComplete="off"
         autoFocus={false}
-        key={searchKey}
         className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
       />
     </div>
   );
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent unnecessary re-renders
+  return prevProps.value === nextProps.value && 
+         prevProps.placeholder === nextProps.placeholder &&
+         prevProps.searchKey === nextProps.searchKey;
 });
 
 const KhanaLineupApp = () => {
@@ -65,10 +76,6 @@ const KhanaLineupApp = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentRole, setCurrentRole] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-
-  // Search input refs to maintain focus
-  const customerSearchRef = useRef(null);
-  const vendorSearchRef = useRef(null);
 
   // Authentication persistence - check for saved login on app load
   useEffect(() => {
@@ -169,14 +176,12 @@ const KhanaLineupApp = () => {
   const registeredUsers = Object.values(users);
   const defaultUsers = {};
 
-  // Memoized search handlers to prevent component re-renders - with stable references
-  const handleSearchQueryChange = useCallback((e) => {
-    const value = e.target.value;
+  // Extremely stable search handlers with useCallback
+  const handleSearchQueryChange = useCallback((value) => {
     setSearchQuery(value);
   }, []);
 
-  const handleVendorSearchQueryChange = useCallback((e) => {
-    const value = e.target.value;
+  const handleVendorSearchQueryChange = useCallback((value) => {
     setVendorSearchQuery(value);
   }, []);
 
@@ -630,10 +635,10 @@ const KhanaLineupApp = () => {
   };
 
   // Customer Menu View
-  const MenuView = memo(() => {
+  const MenuView = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
 
-    const addToCart = (item) => {
+    const addToCart = useCallback((item) => {
       const existingItem = cart.find(cartItem => cartItem.id === item.id);
 
       if (existingItem) {
@@ -648,16 +653,20 @@ const KhanaLineupApp = () => {
       
       setShowCart(true);
       setTimeout(() => setShowCart(false), 3000);
-    };
+    }, [cart]);
 
-    const filteredItems = menuItems.filter(item => {
-      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           item.category.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-      return matchesSearch && matchesCategory; // Show all items, let button handle availability
-    });
+    const filteredItems = useMemo(() => {
+      return menuItems.filter(item => {
+        const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             item.category.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+      });
+    }, [menuItems, searchQuery, selectedCategory]);
 
-    const categories = ['all', ...new Set(menuItems.map(item => item.category))];
+    const categories = useMemo(() => {
+      return ['all', ...new Set(menuItems.map(item => item.category))];
+    }, [menuItems]);
 
     return (
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
@@ -669,7 +678,6 @@ const KhanaLineupApp = () => {
             onChange={handleSearchQueryChange}
             placeholder="Search dishes..."
             searchKey="customer-search-stable"
-            inputRef={customerSearchRef}
           />
         </div>
 
@@ -751,7 +759,7 @@ const KhanaLineupApp = () => {
         )}
       </div>
     );
-  });
+  };
 
   // Cart View
   const CartView = () => {
@@ -1405,7 +1413,6 @@ const KhanaLineupApp = () => {
             onChange={handleVendorSearchQueryChange}
             placeholder="Search menu items..."
             searchKey="vendor-search-stable"
-            inputRef={vendorSearchRef}
           />
         </div>
         
