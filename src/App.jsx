@@ -2316,49 +2316,6 @@ const KhanaLineupApp = () => {
             </h3>
           </div>
           <div className="p-6">
-            {/* Test Set Estimated Time */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <div className="flex items-start gap-3">
-                <Clock size={20} className="text-blue-600 mt-0.5" />
-                <div className="flex-1">
-                  <h4 className="font-semibold text-blue-800 mb-2">Set Estimated Time for Testing</h4>
-                  <p className="text-blue-700 text-sm mb-4">
-                    Set estimated time for Token #7 (or any order) to test the display functionality.
-                  </p>
-                  <button
-                    onClick={async () => {
-                      try {
-                        // Find order with token 7
-                        const targetOrder = orders.find(order => order.tokenNumber === 7);
-                        if (targetOrder) {
-                          console.log('Setting estimated time for order:', targetOrder);
-                          await updateEstimatedTime(targetOrder._id, '15');
-                          alert('Estimated time set to "15" for Token #7');
-                        } else {
-                          alert('Token #7 not found. Available tokens: ' + orders.map(o => o.tokenNumber).join(', '));
-                        }
-                      } catch (error) {
-                        console.error('Error setting estimated time:', error);
-                        alert('Failed to set estimated time. Check console for details.');
-                      }
-                    }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium mr-3"
-                  >
-                    Set Estimated Time for Token #7
-                  </button>
-                  <button
-                    onClick={() => {
-                      console.log('Current orders:', orders);
-                      alert('Check console for current orders data');
-                    }}
-                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
-                  >
-                    Debug Orders
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <AlertTriangle size={20} className="text-red-600 mt-0.5" />
