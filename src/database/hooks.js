@@ -344,7 +344,11 @@ export const useOrders = () => {
     const interval = setInterval(() => {
       // Only auto-refresh if user is likely logged in (check localStorage)
       const savedAuth = localStorage.getItem('khanaLineupAuth');
-      if (savedAuth) {
+      // Also check if we're not currently in a login/registration process
+      const authForms = document.querySelectorAll('#login-email, #registration-name');
+      const isInAuthFlow = authForms.length > 0 && Array.from(authForms).some(form => document.activeElement === form);
+      
+      if (savedAuth && !isInAuthFlow) {
         loadOrders();
       }
     }, 30000);
