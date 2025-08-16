@@ -159,6 +159,7 @@ const KhanaLineupApp = () => {
     });
     const [showPassword, setShowPassword] = useState(false);
     const [errors, setErrors] = useState({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const validateForm = () => {
       const newErrors = {};
@@ -172,8 +173,11 @@ const KhanaLineupApp = () => {
       return Object.keys(newErrors).length === 0;
     };
 
-    const handleRegister = () => {
+    const handleRegister = async () => {
+      if (isSubmitting) return;
+      
       try {
+        setIsSubmitting(true);
         if (!validateForm()) return;
         
         const existingUser = getUserByEmail(formData.email);
@@ -191,7 +195,7 @@ const KhanaLineupApp = () => {
           status: 'active'
         };
         
-        const result = addUser(newUser);
+        const result = await addUser(newUser);
         
         if (result) {
           const registeredEmail = newUser.email;
@@ -205,13 +209,18 @@ const KhanaLineupApp = () => {
       } catch (error) {
         console.error('Registration error:', error);
         setErrors({ general: 'Registration failed due to an error. Please try again.' });
+      } finally {
+        setIsSubmitting(false);
       }
     };
 
     const handleLogin = async () => {
+      if (isSubmitting) return;
+      
       if (!validateForm()) return;
 
       try {
+        setIsSubmitting(true);
         console.log('Attempting login with:', formData.email, formData.password);
         console.log('Available users:', Object.values(users));
         
@@ -255,40 +264,42 @@ const KhanaLineupApp = () => {
         } else {
           setErrors({ email: 'Invalid email or password' });
         }
+      } finally {
+        setIsSubmitting(false);
       }
     };
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-400 via-red-400 to-pink-500 flex items-center justify-center p-4">
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-8 w-full max-w-md">
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent mb-2">
+        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 sm:p-8 w-full max-w-md mx-auto">
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent mb-2">
               Khana Line-up
             </h1>
-            <p className="text-gray-600 text-lg">Order ahead, skip the wait</p>
+            <p className="text-gray-600 text-base sm:text-lg">Order ahead, skip the wait</p>
           </div>
           
-          <div className="flex mb-6">
+          <div className="flex mb-4 sm:mb-6">
             <button
               onClick={() => setIsRegistering(false)}
-              className={`flex-1 py-2 rounded-l-lg transition-all duration-300 ${
+              className={`flex-1 py-2 sm:py-3 text-sm sm:text-base rounded-l-lg transition-all duration-300 ${
                 !isRegistering 
                   ? 'bg-orange-500 text-white shadow-lg' 
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              <LogIn className="inline mr-2" size={18} />
+              <LogIn className="inline mr-1 sm:mr-2" size={16} />
               Login
             </button>
             <button
               onClick={() => setIsRegistering(true)}
-              className={`flex-1 py-2 rounded-r-lg transition-all duration-300 ${
+              className={`flex-1 py-2 sm:py-3 text-sm sm:text-base rounded-r-lg transition-all duration-300 ${
                 isRegistering 
                   ? 'bg-orange-500 text-white shadow-lg' 
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              <UserPlus className="inline mr-2" size={18} />
+              <UserPlus className="inline mr-1 sm:mr-2" size={16} />
               Register
             </button>
           </div>
@@ -303,11 +314,12 @@ const KhanaLineupApp = () => {
                   placeholder="Full Name"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                  onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
                     errors.name ? 'border-red-500' : 'border-gray-300'
                   }`}
                 />
-                {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+                {errors.name && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.name}</p>}
               </div>
             )}
             
@@ -319,15 +331,16 @@ const KhanaLineupApp = () => {
                 placeholder="Email"
                 value={formData.email}
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
-                className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
                   errors.email ? 'border-red-500' : 'border-gray-300'
                 }`}
               />
               {errors.email && (
                 <div className="mt-1">
-                  <p className="text-red-500 text-sm">{errors.email}</p>
+                  <p className="text-red-500 text-xs sm:text-sm">{errors.email}</p>
                   {errors.email.includes('Email not found') && (
-                    <p className="text-blue-600 text-sm mt-1">
+                    <p className="text-blue-600 text-xs sm:text-sm mt-1">
                       Don't have an account? 
                       <button 
                         onClick={() => setIsRegistering(true)}
@@ -349,7 +362,8 @@ const KhanaLineupApp = () => {
                 placeholder="Password"
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 pr-12 ${
+                onKeyDown={(e) => e.key === 'Enter' && (isRegistering ? handleRegister() : handleLogin())}
+                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 pr-10 sm:pr-12 ${
                   errors.password ? 'border-red-500' : 'border-gray-300'
                 }`}
               />
@@ -358,9 +372,9 @@ const KhanaLineupApp = () => {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
               >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
-              {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
+              {errors.password && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.password}</p>}
             </div>
 
             {isRegistering && (
@@ -369,7 +383,7 @@ const KhanaLineupApp = () => {
                 name="role"
                 value={formData.role}
                 onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
               >
                 <option value="customer">Customer</option>
                 <option value="vendor">Vendor</option>
@@ -378,16 +392,27 @@ const KhanaLineupApp = () => {
           </div>
 
           {errors.general && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mt-4">
-              <p className="text-sm">{errors.general}</p>
+            <div className="bg-red-100 border border-red-400 text-red-700 px-3 sm:px-4 py-2 sm:py-3 rounded-lg mt-4">
+              <p className="text-xs sm:text-sm">{errors.general}</p>
             </div>
           )}
 
           <button
+            type="button"
             onClick={isRegistering ? handleRegister : handleLogin}
-            className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-3 rounded-xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 text-lg font-semibold mt-6 transform hover:scale-105 shadow-lg"
+            disabled={isSubmitting}
+            className={`w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-2 sm:py-3 rounded-xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 text-base sm:text-lg font-semibold mt-4 sm:mt-6 transform hover:scale-105 shadow-lg ${
+              isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
-            {isRegistering ? 'Create Account' : 'Sign In'}
+            {isSubmitting ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                {isRegistering ? 'Creating Account...' : 'Signing In...'}
+              </div>
+            ) : (
+              isRegistering ? 'Create Account' : 'Sign In'
+            )}
           </button>
         </div>
       </div>
@@ -595,6 +620,16 @@ const KhanaLineupApp = () => {
   // Customer Menu View
   const MenuView = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
+    const [localSearchQuery, setLocalSearchQuery] = useState('');
+
+    // Use local search state to prevent focus loss
+    useEffect(() => {
+      const timeoutId = setTimeout(() => {
+        setSearchQuery(localSearchQuery);
+      }, 300); // Debounce search to improve performance
+
+      return () => clearTimeout(timeoutId);
+    }, [localSearchQuery]);
 
     const addToCart = (item) => {
       const existingItem = cart.find(cartItem => cartItem.id === item.id);
@@ -639,10 +674,10 @@ const KhanaLineupApp = () => {
               name="menuSearch"
               type="text"
               placeholder="Search dishes..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={localSearchQuery}
+              onChange={(e) => setLocalSearchQuery(e.target.value)}
               autoComplete="off"
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              className="w-full pl-10 pr-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
           </div>
         </div>
@@ -669,7 +704,7 @@ const KhanaLineupApp = () => {
             <p className="text-gray-600 text-lg">No items found matching your search</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredItems.map(item => (
               <div key={item.id} className={`bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
                 <div className="bg-gradient-to-br from-orange-100 to-red-100 h-32 flex items-center justify-center">
@@ -1306,6 +1341,16 @@ const KhanaLineupApp = () => {
     const [editingItem, setEditingItem] = useState(null);
     const [editData, setEditData] = useState({});
     const [newItem, setNewItem] = useState({ name: '', price: '', category: '', available: true, description: '' });
+    const [localVendorSearchQuery, setLocalVendorSearchQuery] = useState('');
+
+    // Use local search state to prevent focus loss
+    useEffect(() => {
+      const timeoutId = setTimeout(() => {
+        setVendorSearchQuery(localVendorSearchQuery);
+      }, 300); // Debounce search to improve performance
+
+      return () => clearTimeout(timeoutId);
+    }, [localVendorSearchQuery]);
 
     const filteredMenuItems = menuItems.filter(item => {
       // Only show items belonging to current vendor
@@ -1382,10 +1427,10 @@ const KhanaLineupApp = () => {
               name="vendorSearch"
               type="text"
               placeholder="Search menu items..."
-              value={vendorSearchQuery}
-              onChange={(e) => setVendorSearchQuery(e.target.value)}
+              value={localVendorSearchQuery}
+              onChange={(e) => setLocalVendorSearchQuery(e.target.value)}
               autoComplete="off"
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              className="w-full pl-10 pr-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
           </div>
         </div>
@@ -1399,7 +1444,7 @@ const KhanaLineupApp = () => {
               Current User: {currentUser?.name || 'None'} ({currentUser?.id || 'No ID'})
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
             <input
               id="new-item-name"
               name="itemName"
@@ -1407,7 +1452,7 @@ const KhanaLineupApp = () => {
               placeholder="Item Name*"
               value={newItem.name}
               onChange={(e) => setNewItem({...newItem, name: e.target.value})}
-              className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
             <input
               id="new-item-price"
@@ -1416,14 +1461,14 @@ const KhanaLineupApp = () => {
               placeholder="Price*"
               value={newItem.price}
               onChange={(e) => setNewItem({...newItem, price: e.target.value})}
-              className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
             <select
               id="new-item-category"
               name="itemCategory"
               value={newItem.category}
               onChange={(e) => setNewItem({...newItem, category: e.target.value})}
-              className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             >
               <option value="">Select Category*</option>
               <option value="Main Course">Main Course</option>
@@ -1439,21 +1484,22 @@ const KhanaLineupApp = () => {
               placeholder="Description"
               value={newItem.description}
               onChange={(e) => setNewItem({...newItem, description: e.target.value})}
-              className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
             <button
               onClick={addItem}
-              className="bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 flex items-center justify-center gap-2 transform hover:scale-105 font-medium"
+              className="bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 sm:py-3 text-sm sm:text-base rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 flex items-center justify-center gap-2 transform hover:scale-105 font-medium"
             >
-              <Plus size={20} />
-              Add Item
+              <Plus size={18} />
+              <span className="hidden sm:inline">Add Item</span>
+              <span className="sm:hidden">Add</span>
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
           {filteredMenuItems.map(item => (
-            <div key={item.id} className={`bg-white rounded-2xl shadow-lg p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}>
+            <div key={item.id} className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}>
               {editingItem === item.id ? (
                 <div className="space-y-4">
                   <input
