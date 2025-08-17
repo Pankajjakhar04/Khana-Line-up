@@ -1,7 +1,21 @@
-# Environment files
+# Environment files - NEVER commit these
 .env
 .env.local
 .env.production
+.env.development
+.env.test
+.env.vercel
+
+# Firebase service account files (if any)
+firebase-service-account*.json
+serviceAccountKey.json
+firebase-adminsdk*.json
+firebase-config.json
+firebase-private-key.json
+
+# Local environment backups
+*.env.backup
+.env.*
 
 # Logs
 logs

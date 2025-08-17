@@ -1,15 +1,17 @@
-# Khana Line-up - MongoDB Atlas Integration
+# Khana Line-up - Production-Ready Food Ordering System
 
-A modern food ordering system with queue management, now integrated with MongoDB Atlas for cloud data storage.
+A modern food ordering system with queue management, Google authentication, and MongoDB Atlas integration - ready for production deployment on Vercel.
 
 ## 🚀 Features
 
-- **Cloud Database**: MongoDB Atlas integration with local storage fallback
-- **User Management**: Customer, Vendor, and Admin roles
+- **Cloud Database**: MongoDB Atlas integration for scalable data storage
+- **Authentication**: Email/password and Google OAuth login
+- **User Management**: Customer, Vendor, and Admin roles with approval workflows
 - **Menu Management**: CRUD operations for menu items with stock tracking
 - **Order Management**: Real-time order processing and status updates
 - **Analytics**: Sales and order analytics for vendors
-- **Responsive Design**: Works on desktop, tablet, and mobile devices
+- **Responsive Design**: Works perfectly on desktop, tablet, and mobile devices
+- **Production Ready**: Secure, scalable, and deployable to Vercel
 
 ## 🛠️ Technology Stack
 
@@ -17,6 +19,7 @@ A modern food ordering system with queue management, now integrated with MongoDB
 - **React 18** - UI framework
 - **Vite** - Build tool and dev server
 - **Tailwind CSS** - Utility-first CSS framework
+- **Firebase Auth** - Google authentication
 - **Lucide React** - Icon library
 
 ### Backend
@@ -24,6 +27,11 @@ A modern food ordering system with queue management, now integrated with MongoDB
 - **Express.js** - Web framework
 - **MongoDB Atlas** - Cloud database
 - **Mongoose** - MongoDB object modeling
+- **bcryptjs** - Password hashing
+
+### Deployment
+- **Vercel** - Serverless deployment platform
+- **GitHub** - Version control and CI/CD
 
 ### Development Tools
 - **Nodemon** - Auto-restart server during development
@@ -279,6 +287,50 @@ The system comes with default users for testing:
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🆘 Support
+## 🚀 Production Deployment
+
+This application is ready for production deployment on Vercel with zero configuration needed.
+
+### Quick Deploy to Vercel
+
+1. **Push to GitHub:**
+   ```bash
+   git add .
+   git commit -m "Ready for production deployment"
+   git push origin main
+   ```
+
+2. **Deploy to Vercel:**
+   - Go to [vercel.com](https://vercel.com)
+   - Import your GitHub repository
+   - Framework preset: Vite (auto-detected)
+   - Deploy!
+
+3. **Configure Environment Variables:**
+   Add these in your Vercel dashboard (Settings > Environment Variables):
+   ```
+   VITE_API_URL=https://your-app.vercel.app/api
+   VITE_FIREBASE_API_KEY=your_firebase_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your-project-id
+   MONGODB_URI=your_mongodb_atlas_connection_string
+   JWT_SECRET=your_secure_jwt_secret
+   ```
+
+4. **Complete Setup:**
+   - Enable Google Auth in Firebase Console
+   - Add your Vercel domain to Firebase authorized domains
+   - Whitelist Vercel IPs in MongoDB Atlas (0.0.0.0/0)
+
+📖 **Detailed Instructions:** See [VERCEL_DEPLOYMENT_GUIDE.md](./VERCEL_DEPLOYMENT_GUIDE.md)
+
+### Security Features ✅
+- No hardcoded API keys or secrets
+- Environment variable configuration
+- Production-safe Firebase setup
+- Secure password hashing
+- CORS protection
+- Input validation
 
 If you encounter any issues:
 

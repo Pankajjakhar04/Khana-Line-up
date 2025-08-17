@@ -63,6 +63,16 @@ const userSchema = new mongoose.Schema({
   lastLogin: {
     type: Date
   },
+  // Google Authentication fields
+  googleUid: {
+    type: String,
+    default: null,
+    sparse: true
+  },
+  photoURL: {
+    type: String,
+    default: ''
+  },
   preferences: {
     notifications: {
       email: { type: Boolean, default: true },

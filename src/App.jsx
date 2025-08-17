@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu } from 'lucide-react';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
+import GoogleLoginButton from './components/GoogleLoginButton.jsx';
 
 const KhanaLineupApp = () => {
   // Database hooks
@@ -414,6 +415,51 @@ const KhanaLineupApp = () => {
               isRegistering ? 'Create Account' : 'Sign In'
             )}
           </button>
+
+          {/* Divider */}
+          {!isRegistering && (
+            <>
+              <div className="flex items-center my-4 sm:my-6">
+                <div className="flex-grow border-t border-gray-300"></div>
+                <span className="flex-shrink mx-4 text-gray-600 text-sm">or</span>
+                <div className="flex-grow border-t border-gray-300"></div>
+              </div>
+
+              {/* Google Login Button */}
+              <GoogleLoginButton
+                onSuccess={(result) => {
+                  console.log('Google login successful:', result);
+                  if (result && result.user) {
+                    setCurrentUser(result.user);
+                    setCurrentRole(result.user.role);
+                    
+                    // Save authentication to localStorage
+                    localStorage.setItem('khanaLineupAuth', JSON.stringify({
+                      userId: result.user.id,
+                      userRole: result.user.role
+                    }));
+                    
+                    // Navigate based on role
+                    if (result.user.role === 'admin') {
+                      setActiveTab('dashboard');
+                    } else if (result.user.role === 'vendor') {
+                      setActiveTab('orders');
+                    } else {
+                      setActiveTab('menu');
+                    }
+                    
+                    // Clear form
+                    setFormData({ email: '', password: '', name: '', role: 'customer' });
+                    setErrors({});
+                  }
+                }}
+                onError={(error) => {
+                  console.error('Google login failed:', error);
+                  setErrors({ general: error.message || 'Google sign-in failed. Please try again.' });
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
     );
