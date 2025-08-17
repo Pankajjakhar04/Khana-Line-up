@@ -3,7 +3,6 @@ import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Tra
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 import GoogleLoginButton from './components/GoogleLoginButton.jsx';
-import FirebaseDebug from './components/FirebaseDebug.jsx';
 
 const KhanaLineupApp = () => {
   // Database hooks
@@ -425,9 +424,6 @@ const KhanaLineupApp = () => {
                 <span className="flex-shrink mx-4 text-gray-600 text-sm">or</span>
                 <div className="flex-grow border-t border-gray-300"></div>
               </div>
-
-              {/* Firebase Debug Info - TEMPORARY */}
-              <FirebaseDebug />
 
               {/* Google Login Button */}
               <GoogleLoginButton

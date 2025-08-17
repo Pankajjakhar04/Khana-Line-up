@@ -2,7 +2,9 @@
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider, isFirebaseInitialized } from '../firebase/config';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// API Configuration - matches the main API service
+const API_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.PROD ? '/api' : 'http://localhost:5000/api');
 
 class GoogleAuthService {
   // Check if Google authentication is available
