@@ -1,6 +1,5 @@
-import app from '../server/server.js';
+// Temporarily use simple test API
+import testApp from './test.js';
 
-// Export the Express app for Vercel serverless functions
-export default function handler(req, res) {
-  return app(req, res);
-}
+// Export the test app for Vercel serverless functions
+export default testApp;

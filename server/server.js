@@ -135,33 +135,40 @@ const initializeDefaultData = async () => {
   }
 };
 
-// Start server
-const server = app.listen(PORT, async () => {
-  console.log(`
+// Only start server if not in serverless environment (like Vercel)
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  // Start server
+  const server = app.listen(PORT, async () => {
+    console.log(`
 🚀 Khana Line-up Server is running!
 📍 Environment: ${process.env.NODE_ENV || 'development'}
 🌐 Server: http://localhost:${PORT}
 📊 Health Check: http://localhost:${PORT}/health
 📚 API Base: http://localhost:${PORT}/api
-  `);
-  
-  // Initialize default data after server starts
-  setTimeout(initializeDefaultData, 2000);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
+    `);
+    
+    // Initialize default data after server starts
+    setTimeout(initializeDefaultData, 2000);
   });
-});
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    server.close(() => {
+      console.log('Process terminated');
+    });
   });
-});
+
+  process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully');
+    server.close(() => {
+      console.log('Process terminated');
+    });
+  });
+} else {
+  // For serverless environments, just initialize data
+  console.log('Running in serverless environment');
+  initializeDefaultData();
+}
 
 export default app;
