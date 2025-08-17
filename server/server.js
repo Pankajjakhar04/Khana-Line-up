@@ -17,8 +17,18 @@ connectDB();
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:5173'],
-  credentials: true
+  origin: process.env.CORS_ORIGIN || [
+    'http://localhost:3000', 
+    'http://localhost:3001', 
+    'http://localhost:3002', 
+    'http://localhost:5173',
+    'https://khana-line-up-git-testing-pankajjakhar04.vercel.app',
+    'https://khana-line-up-pankajjakhar04.vercel.app',
+    /https:\/\/.*\.vercel\.app$/
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -50,6 +60,7 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       menu: '/api/menu',
       orders: '/api/orders',
+      googleAuth: '/api/google-auth',
       health: '/health'
     }
   });

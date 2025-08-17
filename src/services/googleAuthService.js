@@ -40,6 +40,7 @@ class GoogleAuthService {
       };
       
       console.log('Sending user data to backend:', userData);
+      console.log('API URL:', `${API_URL}/google-auth/login`);
       
       // Send user data to backend for authentication/user creation
       const response = await fetch(`${API_URL}/google-auth/login`, {
