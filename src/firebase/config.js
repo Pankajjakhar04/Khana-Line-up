@@ -34,7 +34,11 @@ try {
     
     if (import.meta.env.PROD) {
       console.error('Firebase configuration incomplete for production');
-      throw new Error('Firebase configuration incomplete. Check environment variables.');
+      console.error('Missing variables:', missingVars);
+      // Don't throw error, just disable Firebase
+      app = null;
+      auth = null;
+      googleProvider = null;
     } else {
       console.warn('Firebase not configured for development. Google auth will be disabled.');
       app = null;
@@ -43,6 +47,14 @@ try {
     }
   } else {
     console.log('Initializing Firebase...');
+    console.log('Firebase config values check:', {
+      apiKey: firebaseConfig.apiKey ? 'Set' : 'Missing',
+      authDomain: firebaseConfig.authDomain ? 'Set' : 'Missing',
+      projectId: firebaseConfig.projectId ? 'Set' : 'Missing',
+      storageBucket: firebaseConfig.storageBucket ? 'Set' : 'Missing',
+      messagingSenderId: firebaseConfig.messagingSenderId ? 'Set' : 'Missing',
+      appId: firebaseConfig.appId ? 'Set' : 'Missing'
+    });
     
     // Initialize Firebase
     app = initializeApp(firebaseConfig);
@@ -72,8 +84,10 @@ try {
   console.error('Firebase initialization failed:', error);
   console.error('Error details:', {
     code: error.code,
-    message: error.message
+    message: error.message,
+    name: error.name
   });
+  console.error('Firebase config being used:', firebaseConfig);
   
   // Set to null if initialization fails to prevent further errors
   app = null;
