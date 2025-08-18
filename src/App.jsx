@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu } from 'lucide-react';
+import SearchField from './components/SearchField';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 import GoogleLoginButton from './components/GoogleLoginButton.jsx';
@@ -665,17 +666,9 @@ const KhanaLineupApp = () => {
 
   // Customer Menu View
   const MenuView = () => {
-    const [selectedCategory, setSelectedCategory] = useState('all');
-    const [localSearchQuery, setLocalSearchQuery] = useState('');
-
-    // Use local search state to prevent focus loss
-    useEffect(() => {
-      const timeoutId = setTimeout(() => {
-        setSearchQuery(localSearchQuery);
-      }, 300); // Debounce search to improve performance
-
-      return () => clearTimeout(timeoutId);
-    }, [localSearchQuery]);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [customerInput, setCustomerInput] = useState('');
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
     const addToCart = (item) => {
       const existingItem = cart.find(cartItem => cartItem.id === item.id);
@@ -696,12 +689,14 @@ const KhanaLineupApp = () => {
 
     const filteredItems = useMemo(() => {
       return menuItems.filter(item => {
-        const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                             item.category.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+        const matchesSearch = !customerSearchTerm ||
+          (item.name || '').toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+          (item.category || '').toLowerCase().includes(customerSearchTerm.toLowerCase());
+        const matchesCategory = selectedCategory === 'all' ||
+          (item.category || '').toLowerCase() === selectedCategory.toLowerCase();
         return matchesSearch && matchesCategory;
       });
-    }, [menuItems, searchQuery, selectedCategory]);
+    }, [menuItems, customerSearchTerm, selectedCategory]);
 
     const categories = useMemo(() => {
       return ['all', ...new Set(menuItems.map(item => item.category))];
@@ -711,21 +706,12 @@ const KhanaLineupApp = () => {
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <h2 className="text-3xl font-bold text-gray-800">Our Menu</h2>
-          
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              key="menu-search-input"
-              id="menu-search-input"
-              name="menuSearch"
-              type="text"
-              placeholder="Search dishes..."
-              value={localSearchQuery}
-              onChange={(e) => setLocalSearchQuery(e.target.value)}
-              autoComplete="off"
-              className="w-full pl-10 pr-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
-            />
-          </div>
+          <SearchField
+            value={customerInput}
+            onChange={setCustomerInput}
+            onSearch={val => setCustomerSearchTerm(val.trim())}
+            placeholder="Search dishes..."
+          />
         </div>
 
         <div className="flex flex-wrap gap-2 mb-8">
@@ -1389,20 +1375,15 @@ const KhanaLineupApp = () => {
     const [newItem, setNewItem] = useState({ name: '', price: '', category: '', available: true, description: '' });
     const [localVendorSearchQuery, setLocalVendorSearchQuery] = useState('');
 
-    // Use local search state to prevent focus loss
-    useEffect(() => {
-      const timeoutId = setTimeout(() => {
-        setVendorSearchQuery(localVendorSearchQuery);
-      }, 300); // Debounce search to improve performance
-
-      return () => clearTimeout(timeoutId);
-    }, [localVendorSearchQuery]);
+  const [vendorInput, setVendorInput] = useState('');
+  const [vendorSearchTerm, setVendorSearchTerm] = useState('');
 
     const filteredMenuItems = menuItems.filter(item => {
       // Only show items belonging to current vendor
       const belongsToVendor = item.vendor?._id === currentUser?.id || item.vendorId === currentUser?.id;
-      const matchesSearch = item.name.toLowerCase().includes(vendorSearchQuery.toLowerCase()) ||
-                           item.category.toLowerCase().includes(vendorSearchQuery.toLowerCase());
+      if (!vendorSearchTerm) return belongsToVendor;
+      const matchesSearch = item.name.toLowerCase().includes(vendorSearchTerm.toLowerCase())
+        || item.category.toLowerCase().includes(vendorSearchTerm.toLowerCase());
       return belongsToVendor && matchesSearch;
     });
 
@@ -1467,16 +1448,11 @@ const KhanaLineupApp = () => {
           
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              key="vendor-search-input"
-              id="vendor-search-input"
-              name="vendorSearch"
-              type="text"
+            <SearchField
+              value={vendorInput}
+              onChange={setVendorInput}
+              onSearch={val => setVendorSearchTerm(val.trim())}
               placeholder="Search menu items..."
-              value={localVendorSearchQuery}
-              onChange={(e) => setLocalVendorSearchQuery(e.target.value)}
-              autoComplete="off"
-              className="w-full pl-10 pr-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
             />
           </div>
         </div>
