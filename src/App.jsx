@@ -689,10 +689,11 @@ const KhanaLineupApp = () => {
 
     const filteredItems = useMemo(() => {
       return menuItems.filter(item => {
-        if (!customerSearchTerm) return true;
-        const matchesSearch = item.name.toLowerCase().includes(customerSearchTerm.toLowerCase())
-          || item.category.toLowerCase().includes(customerSearchTerm.toLowerCase());
-        const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+        const matchesSearch = !customerSearchTerm ||
+          (item.name || '').toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+          (item.category || '').toLowerCase().includes(customerSearchTerm.toLowerCase());
+        const matchesCategory = selectedCategory === 'all' ||
+          (item.category || '').toLowerCase() === selectedCategory.toLowerCase();
         return matchesSearch && matchesCategory;
       });
     }, [menuItems, customerSearchTerm, selectedCategory]);
