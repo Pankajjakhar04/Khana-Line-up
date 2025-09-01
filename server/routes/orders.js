@@ -1,5 +1,6 @@
 import express from 'express';
 import { Order, MenuItem } from '../models/index.js';
+import socketEvents from '../config/socket.js';
 
 const router = express.Router();
 
@@ -180,6 +181,9 @@ router.post('/', async (req, res) => {
       { path: 'vendor', select: 'name email' },
       { path: 'items.menuItem', select: 'name category' }
     ]);
+
+    // Emit socket event for new order
+    socketEvents.orderCreated(order);
 
     res.status(201).json({
       success: true,

@@ -4,6 +4,8 @@ import SearchField from './components/SearchField';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 import GoogleLoginButton from './components/GoogleLoginButton.jsx';
+import { useSocket } from './hooks/useSocket.js';
+import NotificationCenter from './components/NotificationCenter.jsx';
 
 const KhanaLineupApp = () => {
   // Database hooks
@@ -14,6 +16,9 @@ const KhanaLineupApp = () => {
   const analytics = useAnalytics();
   const database = useDatabase();
   const { pendingVendors, approveVendor, rejectVendor, refreshPendingVendors } = useVendorApprovals();
+
+  // Socket.IO hooks
+  const { socket, isConnected, notifications: socketNotifications } = useSocket();
 
   // Debug: Log users on app load
   useEffect(() => {
@@ -102,6 +107,54 @@ const KhanaLineupApp = () => {
       isMounted = false;
     };
   }, [users]);
+
+  // Socket.IO user registration
+  useEffect(() => {
+    if (socket && currentUser && isConnected) {
+      console.log('🔌 Registering user with socket:', currentUser.name, currentUser.role);
+      socket.emit('register', {
+        userId: currentUser._id,
+        name: currentUser.name,
+        role: currentUser.role
+      });
+    }
+  }, [socket, currentUser, isConnected]);
+
+  // Socket.IO event handlers for real-time updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleOrderUpdate = (order) => {
+      console.log('📦 Received order update:', order);
+      refreshOrders();
+    };
+
+    const handleMenuUpdate = (menuItem) => {
+      console.log('🍽️ Received menu update:', menuItem);
+      refreshMenuItems();
+    };
+
+    const handleOrderCreated = (order) => {
+      console.log('🆕 New order created:', order);
+      refreshOrders();
+    };
+
+    // Register event listeners
+    socket.on('orderStatusUpdated', handleOrderUpdate);
+    socket.on('orderCancelled', handleOrderUpdate);
+    socket.on('menuItemAdded', handleMenuUpdate);
+    socket.on('menuItemUpdated', handleMenuUpdate);
+    socket.on('orderCreated', handleOrderCreated);
+
+    return () => {
+      socket.off('orderStatusUpdated', handleOrderUpdate);
+      socket.off('orderCancelled', handleOrderUpdate);
+      socket.off('menuItemAdded', handleMenuUpdate);
+      socket.off('menuItemUpdated', handleMenuUpdate);
+      socket.off('orderCreated', handleOrderCreated);
+    };
+  }, [socket, refreshOrders, refreshMenuItems]);
+
   const [cart, setCart] = useState([]);
   const [activeTab, setActiveTab] = useState(''); // Initialize as empty, will be set by useEffect
   const [notifications, setNotifications] = useState([]);
@@ -3042,25 +3095,12 @@ const KhanaLineupApp = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-orange-50">
       <Navigation />
       
-      {/* Notifications */}
-      {notifications.length > 0 && currentRole === 'customer' && (
-        <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white p-3 sm:p-4 shadow-lg">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-              <div className="animate-pulse flex-shrink-0">
-                <Bell size={18} className="sm:w-5 sm:h-5" />
-              </div>
-              <p className="font-medium text-sm sm:text-base truncate">{notifications[notifications.length - 1].message}</p>
-            </div>
-            <button
-              onClick={() => setNotifications([])}
-              className="text-white hover:text-green-100 transition-colors text-xl sm:text-2xl flex-shrink-0 w-6 h-6 flex items-center justify-center"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Socket.IO Notification Center */}
+      <NotificationCenter 
+        notifications={socketNotifications} 
+        isConnected={isConnected}
+        currentUser={currentUser}
+      />
       
       {renderContent()}
     </div>

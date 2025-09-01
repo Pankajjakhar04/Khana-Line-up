@@ -1,5 +1,6 @@
 import express from 'express';
 import { MenuItem } from '../models/index.js';
+import socketEvents from '../config/socket.js';
 
 const router = express.Router();
 
@@ -170,6 +171,9 @@ router.post('/', async (req, res) => {
     
     await item.populate('vendor', 'name email restaurantName');
 
+    // Emit socket event for new menu item
+    socketEvents.menuItemAdded(item);
+
     res.status(201).json({
       success: true,
       message: 'Menu item created successfully',
@@ -239,6 +243,9 @@ router.put('/:id', async (req, res) => {
         message: 'Menu item not found'
       });
     }
+
+    // Emit socket event for menu item update
+    socketEvents.menuItemUpdated(item);
 
     res.json({
       success: true,

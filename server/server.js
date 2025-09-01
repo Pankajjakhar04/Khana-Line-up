@@ -2,8 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import { authRoutes, menuRoutes, orderRoutes, googleAuthRoutes } from './routes/index.js';
 import { User, MenuItem } from './models/index.js';
+import { initializeSocket } from './config/socket.js';
 
 // Load environment variables from multiple sources
 dotenv.config(); // Load .env
@@ -219,12 +222,28 @@ const initializeDefaultData = async () => {
 
 // Only start server if not in serverless environment (like Vercel)
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  // Create HTTP server for Socket.IO
+  const httpServer = createServer(app);
+  
+  // Initialize Socket.IO
+  const io = new Server(httpServer, {
+    cors: {
+      origin: allowedOrigins,
+      methods: ["GET", "POST", "PUT", "DELETE"],
+      credentials: true
+    }
+  });
+  
+  // Initialize socket events
+  initializeSocket(io);
+  
   // Start server
-  const server = app.listen(PORT, async () => {
+  const server = httpServer.listen(PORT, async () => {
     console.log(`
 🚀 Khana Line-up Server is running!
 📍 Environment: ${process.env.NODE_ENV || 'development'}
 🌐 Server: http://localhost:${PORT}
+🔌 Socket.IO: Enabled
 📊 Health Check: http://localhost:${PORT}/health
 📚 API Base: http://localhost:${PORT}/api
     `);
