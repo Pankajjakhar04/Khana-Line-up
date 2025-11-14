@@ -4,25 +4,34 @@ import SearchField from './components/SearchField';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 import GoogleLoginButton from './components/GoogleLoginButton.jsx';
+import { on as onSocket } from './services/socket.js';
 
 const KhanaLineupApp = () => {
+  // Core auth state (used to scope data loading)
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentRole, setCurrentRole] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   // Database hooks
   const { users, addUser, updateUser, deleteUser, getUserByCredentials, getUserByEmail, refreshUsers } = useUsers();
   const { menuItems, addMenuItem, updateMenuItem, deleteMenuItem, loading, refreshMenuItems } = useMenuItems();
-  const { orders, addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, deleteMultipleOrders, deleteOrdersByDateRange, getOrdersByCustomer, refreshOrders } = useOrders();
+  const { orders, addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, deleteMultipleOrders, deleteOrdersByDateRange, getOrdersByCustomer, refreshOrders } = useOrders(currentUser, currentRole);
   const { settings, updateSettings } = useSettings();
   const analytics = useAnalytics();
   const database = useDatabase();
   const { pendingVendors, approveVendor, rejectVendor, refreshPendingVendors } = useVendorApprovals();
 
-  // Debug: Log users on app load
+  // Debug: Log users on app load (development only)
   useEffect(() => {
-    console.log('App loaded, users available:', users);
-    console.log('Admin user check:', users.admin1);
+    if (import.meta.env.DEV) {
+      console.log('App loaded, users available:', users);
+      console.log('Admin user check:', users.admin1);
+    }
   }, [users]);
 
-  // Debug: Add global debug function
+  // Debug: Add global debug function (development only)
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     window.debugVendorApprovals = {
       pendingVendors,
       refreshPendingVendors,
@@ -41,10 +50,7 @@ const KhanaLineupApp = () => {
     };
   }, [pendingVendors, refreshPendingVendors]);
 
-  // State management
-  const [currentUser, setCurrentUser] = useState(null);
-  const [currentRole, setCurrentRole] = useState(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  // State management (non-auth UI state)
 
   // Authentication persistence - check for saved login on app load
   useEffect(() => {
@@ -141,6 +147,40 @@ const KhanaLineupApp = () => {
     };
   }, [showProfileDropdown, showMobileMenu]);
 
+  // Vendor-specific realtime notifications for new orders
+  useEffect(() => {
+    if (!currentUser || currentRole !== 'vendor') return;
+
+    const unsubscribe = onSocket('order:created', (orderDoc) => {
+      try {
+        const vendorId = typeof orderDoc.vendor === 'object'
+          ? orderDoc.vendor._id || orderDoc.vendor.id
+          : orderDoc.vendor;
+
+        if (!vendorId) return;
+
+        const currentId = currentUser.id || currentUser._id;
+        if (vendorId === currentId) {
+          setNotifications((prev) => [
+            ...prev,
+            {
+              id: Date.now(),
+              message: `New order received - Token #${orderDoc.tokenId}`,
+              type: 'order',
+              timestamp: new Date().toISOString()
+            }
+          ]);
+        }
+      } catch (e) {
+        console.error('Error handling order:created notification:', e);
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser, currentRole]);
+
   // Legacy support for existing code
   const registeredUsers = Object.values(users);
   const defaultUsers = {};
@@ -157,7 +197,11 @@ const KhanaLineupApp = () => {
       email: '',
       password: '',
       name: '',
-      role: 'customer'
+      role: 'customer',
+      street: '',
+      city: '',
+      state: '',
+      zipCode: ''
     });
     const [showPassword, setShowPassword] = useState(false);
     const [errors, setErrors] = useState({});
@@ -170,6 +214,10 @@ const KhanaLineupApp = () => {
       if (isRegistering && !formData.name) newErrors.name = 'Name is required';
       if (isRegistering && formData.password.length < 6) {
         newErrors.password = 'Password must be at least 6 characters';
+      }
+      if (isRegistering && formData.role === 'vendor') {
+        if (!formData.street) newErrors.street = 'Street address is required for vendors';
+        if (!formData.city) newErrors.city = 'City is required for vendors';
       }
       setErrors(newErrors);
       return Object.keys(newErrors).length === 0;
@@ -196,13 +244,30 @@ const KhanaLineupApp = () => {
           role: formData.role,
           status: 'active'
         };
+
+        // Send structured address fields for vendors (and optionally others)
+        if (formData.street || formData.city || formData.state || formData.zipCode) {
+          newUser.street = formData.street;
+          newUser.city = formData.city;
+          newUser.state = formData.state;
+          newUser.zipCode = formData.zipCode;
+        }
         
         const result = await addUser(newUser);
         
         if (result) {
           const registeredEmail = newUser.email;
           setIsRegistering(false);
-          setFormData({ email: registeredEmail, password: '', name: '', role: 'customer' });
+          setFormData({ 
+            email: registeredEmail, 
+            password: '', 
+            name: '', 
+            role: 'customer',
+            street: '',
+            city: '',
+            state: '',
+            zipCode: ''
+          });
           setErrors({});
           alert(`🎉 Registration Successful! Welcome ${newUser.name}! You can now login with your credentials as a ${newUser.role}.`);
         } else {
@@ -380,16 +445,76 @@ const KhanaLineupApp = () => {
             </div>
 
             {isRegistering && (
-              <select
-                id="registration-role"
-                name="role"
-                value={formData.role}
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-              >
-                <option value="customer">Customer</option>
-                <option value="vendor">Vendor</option>
-              </select>
+              <>
+                <select
+                  id="registration-role"
+                  name="role"
+                  value={formData.role}
+                  onChange={(e) => setFormData({...formData, role: e.target.value})}
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                >
+                  <option value="customer">Customer</option>
+                  <option value="vendor">Vendor</option>
+                </select>
+
+                {formData.role === 'vendor' && (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      id="registration-street"
+                      name="street"
+                      type="text"
+                      placeholder="Shop Street Address"
+                      value={formData.street}
+                      onChange={(e) => setFormData({ ...formData, street: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                      className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                        errors.street ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    />
+                    {errors.street && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.street}</p>}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <input
+                          id="registration-city"
+                          name="city"
+                          type="text"
+                          placeholder="City"
+                          value={formData.city}
+                          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                          className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                            errors.city ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                        />
+                        {errors.city && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.city}</p>}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          id="registration-state"
+                          name="state"
+                          type="text"
+                          placeholder="State"
+                          value={formData.state}
+                          onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                        />
+                        <input
+                          id="registration-zip"
+                          name="zipCode"
+                          type="text"
+                          placeholder="ZIP Code"
+                          value={formData.zipCode}
+                          onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -753,6 +878,19 @@ const KhanaLineupApp = () => {
                       {item.vendor?.restaurantName || item.vendor?.name || item.vendorName || 'Unknown Vendor'}
                     </p>
                   </div>
+                  {(item.vendor?.fullAddress || item.vendor?.address) && (
+                    <p className="text-xs text-gray-400 mb-1">
+                      {item.vendor?.fullAddress || (typeof item.vendor?.address === 'string'
+                        ? item.vendor.address
+                        : [
+                            item.vendor?.address?.street,
+                            item.vendor?.address?.city,
+                            item.vendor?.address?.state,
+                            item.vendor?.address?.zipCode
+                          ].filter(Boolean).join(', ')
+                      )}
+                    </p>
+                  )}
                   {item.description && (
                     <p className="text-xs text-gray-400 mb-2">{item.description}</p>
                   )}
@@ -1035,8 +1173,25 @@ const KhanaLineupApp = () => {
                   <div>
                     <h3 className="text-xl font-bold text-orange-600">Token #{order.tokenId}</h3>
                     <p className="text-gray-600">{new Date(order.createdAt || order.timestamp).toLocaleString()}</p>
-                    {order.items && order.items.length > 0 && (order.items[0].vendor?.name || order.items[0].vendorName) && (
-                      <p className="text-sm text-orange-600 font-medium">Vendor: {order.items[0].vendor?.name || order.items[0].vendorName}</p>
+                    {(order.vendor || (order.items && order.items.length > 0 && (order.items[0].vendor || order.items[0].vendorName))) && (
+                      <>
+                        <p className="text-sm text-orange-600 font-medium">
+                          Vendor: {order.vendor?.restaurantName || order.vendor?.name || order.items[0].vendor?.name || order.items[0].vendorName}
+                        </p>
+                        {(order.vendor?.fullAddress || order.vendor?.address) && (
+                          <p className="text-xs text-gray-500">
+                            {order.vendor?.fullAddress || (typeof order.vendor?.address === 'string'
+                              ? order.vendor.address
+                              : [
+                                  order.vendor?.address?.street,
+                                  order.vendor?.address?.city,
+                                  order.vendor?.address?.state,
+                                  order.vendor?.address?.zipCode
+                                ].filter(Boolean).join(', ')
+                            )}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
@@ -1061,8 +1216,8 @@ const KhanaLineupApp = () => {
                   </div>
                 </div>
                 
-                {/* Debug info for estimated time - only visible in console */}
-                {(() => {
+                {/* Debug info for estimated time - only visible in console (development only) */}
+                {import.meta.env.DEV && (() => {
                   console.log('Order debug:', {
                     tokenId: order.tokenId,
                     estimatedTime: order.estimatedTime,
@@ -1228,6 +1383,20 @@ const KhanaLineupApp = () => {
       }
     };
 
+    // Adjust estimated time by +/- delta minutes
+    const adjustEstimatedTime = (orderId, delta) => {
+      setEstimatedTimes(prev => {
+        const order = orders.find(o => (o._id || o.id) === orderId);
+        const baseRaw = prev[orderId] ?? (order?.estimatedTime ?? 0);
+        const current = parseInt(baseRaw) || 0;
+        const next = Math.min(120, Math.max(1, current + delta));
+        return {
+          ...prev,
+          [orderId]: String(next)
+        };
+      });
+    };
+
     // Get current estimated time value (from local state or order data)
     const getEstimatedTimeValue = (order) => {
       const orderId = order._id || order.id;
@@ -1286,26 +1455,44 @@ const KhanaLineupApp = () => {
                 </div>
                 
                 <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      id={`estimated-time-${order._id || order.id}`}
-                      name={`estimated-time-${order._id || order.id}`}
-                      type="number"
-                      placeholder="Est. time (mins)"
-                      min="1"
-                      max="120"
-                      autoComplete="off"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
-                      onChange={(e) => handleEstimatedTimeChange(order._id || order.id, e.target.value)}
-                      onBlur={() => handleEstimatedTimeSubmit(order._id || order.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.target.blur(); // This will trigger onBlur
-                        }
-                      }}
-                      value={getEstimatedTimeValue(order)}
-                    />
-                    <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg">mins</span>
+                  <div className="flex flex-col sm:flex-row gap-2 items-stretch">
+                    <div className="flex flex-1 gap-2 items-center">
+                      <input
+                        id={`estimated-time-${order._id || order.id}`}
+                        name={`estimated-time-${order._id || order.id}`}
+                        type="number"
+                        placeholder="Est. time (mins)"
+                        min="1"
+                        max="120"
+                        autoComplete="off"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                        onChange={(e) => handleEstimatedTimeChange(order._id || order.id, e.target.value)}
+                        onBlur={() => handleEstimatedTimeSubmit(order._id || order.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.target.blur(); // This will trigger onBlur
+                          }
+                        }}
+                        value={getEstimatedTimeValue(order)}
+                      />
+                      <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg whitespace-nowrap">mins</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => adjustEstimatedTime(order._id || order.id, -5)}
+                        className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                      >
+                        -5
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => adjustEstimatedTime(order._id || order.id, 5)}
+                        className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                      >
+                        +5
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="flex gap-2">
@@ -2099,14 +2286,20 @@ const KhanaLineupApp = () => {
       name: currentUser?.name || '',
       email: currentUser?.email || '',
       phone: currentUser?.phone || '',
-      address: currentUser?.address || '',
+      address: currentUser?.fullAddress || '',
       restaurantName: currentUser?.restaurantName || ''
     });
     const [isEditing, setIsEditing] = useState(false);
 
     const handleSaveProfile = () => {
-      updateUser(currentUser.id, profileData);
-      setCurrentUser({ ...currentUser, ...profileData });
+      const payload = { ...profileData };
+      if (typeof payload.address === 'string') {
+        payload.address = {
+          street: payload.address
+        };
+      }
+      updateUser(currentUser.id, payload);
+      setCurrentUser({ ...currentUser, ...payload });
       setIsEditing(false);
       setNotifications([...notifications, {
         id: Date.now(),
@@ -2474,8 +2667,18 @@ const KhanaLineupApp = () => {
                       {vendor.phone && (
                         <p className="text-xs text-gray-500">{vendor.phone}</p>
                       )}
-                      {vendor.address && (
-                        <p className="text-xs text-gray-400">{vendor.address}</p>
+                      {(vendor.fullAddress || vendor.address) && (
+                        <p className="text-xs text-gray-400">
+                          {vendor.fullAddress || (typeof vendor.address === 'string'
+                            ? vendor.address
+                            : [
+                                vendor.address?.street,
+                                vendor.address?.city,
+                                vendor.address?.state,
+                                vendor.address?.zipCode
+                              ].filter(Boolean).join(', ')
+                          )}
+                        </p>
                       )}
                     </div>
                     <div className="text-right">
@@ -3043,7 +3246,7 @@ const KhanaLineupApp = () => {
       <Navigation />
       
       {/* Notifications */}
-      {notifications.length > 0 && currentRole === 'customer' && (
+      {notifications.length > 0 && (currentRole === 'customer' || currentRole === 'vendor') && (
         <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white p-3 sm:p-4 shadow-lg">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">

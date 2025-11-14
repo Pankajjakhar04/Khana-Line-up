@@ -235,12 +235,16 @@ app.use((err, req, res, next) => {
 // Initialize default data
 const initializeDefaultData = async () => {
   try {
-    console.log('Initializing default data...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Initializing default data...');
+    }
     
     // Create default admin user only
     await User.createDefaultUsers();
     
-    console.log('Default data initialization completed');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Default data initialization completed');
+    }
   } catch (error) {
     console.error('Error initializing default data:', error);
   }
@@ -253,10 +257,14 @@ const setupRealtime = async () => {
 
     // Socket.IO connection handlers
     io.on('connection', (socket) => {
-      console.log(`Socket connected: ${socket.id}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Socket connected: ${socket.id}`);
+      }
 
       socket.on('disconnect', (reason) => {
-        console.log(`Socket disconnected: ${socket.id} (${reason})`);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Socket disconnected: ${socket.id} (${reason})`);
+        }
       });
     });
 
