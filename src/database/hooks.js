@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import apiService from '../services/api.js';
+import socket, { on as onSocket, off as offSocket } from '../services/socket.js';
 
 // Custom hook for users
 export const useUsers = () => {
@@ -230,6 +231,40 @@ export const useMenuItems = () => {
 
   useEffect(() => {
     loadMenuItems();
+
+    // Realtime menu updates
+    const unsubscribes = [];
+
+    unsubscribes.push(onSocket('menu:created', (doc) => {
+      // Keep list consistent with initial query (only available, isActive, stock>0)
+      if (doc?.available && doc?.isActive !== false && (doc?.stock ?? 0) > 0) {
+        setMenuItems((prev) => {
+          // avoid duplicates
+          if (prev.find((i) => i._id === doc._id)) return prev;
+          return [doc, ...prev];
+        });
+      }
+    }));
+
+    unsubscribes.push(onSocket('menu:updated', (doc) => {
+      setMenuItems((prev) => {
+        // If updated doc no longer matches list criteria, remove it
+        const stillMatches = doc?.available && doc?.isActive !== false && (doc?.stock ?? 0) > 0;
+        if (!stillMatches) return prev.filter((i) => i._id !== doc._id);
+        // else replace
+        const idx = prev.findIndex((i) => i._id === doc._id);
+        if (idx === -1) return [doc, ...prev];
+        const next = [...prev];
+        next[idx] = doc;
+        return next;
+      });
+    }));
+
+    unsubscribes.push(onSocket('menu:deleted', ({ _id }) => {
+      setMenuItems((prev) => prev.filter((i) => i._id !== _id));
+    }));
+
+    return () => unsubscribes.forEach((u) => u && u());
   }, []);
 
   const loadMenuItems = async () => {
@@ -338,6 +373,27 @@ export const useOrders = () => {
 
   useEffect(() => {
     loadOrders();
+
+    // Realtime order updates
+    const unsubscribes = [];
+    unsubscribes.push(onSocket('order:created', (doc) => {
+      setOrders((prev) => {
+        if (prev.find((o) => o._id === doc._id)) return prev;
+        return [doc, ...prev];
+      });
+    }));
+    unsubscribes.push(onSocket('order:updated', (doc) => {
+      setOrders((prev) => {
+        const idx = prev.findIndex((o) => o._id === doc._id);
+        if (idx === -1) return [doc, ...prev];
+        const next = [...prev];
+        next[idx] = doc;
+        return next;
+      });
+    }));
+    unsubscribes.push(onSocket('order:deleted', ({ _id }) => {
+      setOrders((prev) => prev.filter((o) => o._id !== _id));
+    }));
     
     // Set up periodic refresh every 30 seconds, but only if we're not on the login page
     // Check if there's any user authenticated to prevent refresh during login
