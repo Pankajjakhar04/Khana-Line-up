@@ -194,6 +194,67 @@ const KhanaLineupApp = () => {
     };
   }, [currentUser, currentRole]);
 
+  // Customer-specific realtime notifications for any order update
+  useEffect(() => {
+    if (!currentUser || currentRole !== 'customer') return;
+
+    const unsubscribe = onSocket('order:updated', (orderDoc) => {
+      try {
+        const customerId = typeof orderDoc.customer === 'object'
+          ? orderDoc.customer._id || orderDoc.customer.id
+          : orderDoc.customer;
+
+        if (!customerId) return;
+
+        const currentId = currentUser.id || currentUser._id;
+        if (customerId !== currentId) return;
+
+        const status = orderDoc.status;
+        let message = '';
+
+        if (orderDoc.estimatedTime && !['ready', 'completed', 'cancelled'].includes((status || '').toLowerCase())) {
+          message = `Estimated time for order #${orderDoc.tokenId}: ${orderDoc.estimatedTime} minutes.`;
+        } else {
+          switch ((status || '').toLowerCase()) {
+            case 'confirmed':
+              message = `Your order #${orderDoc.tokenId} has been confirmed.`;
+              break;
+            case 'preparing':
+              message = `Your order #${orderDoc.tokenId} is now being prepared.`;
+              break;
+            case 'ready':
+              message = `Your order #${orderDoc.tokenId} is ready for pickup!`;
+              break;
+            case 'completed':
+              message = `Your order #${orderDoc.tokenId} has been completed.`;
+              break;
+            case 'cancelled':
+              message = `Your order #${orderDoc.tokenId} has been cancelled.`;
+              break;
+            default:
+              message = `Your order #${orderDoc.tokenId} has been updated.`;
+          }
+        }
+
+        setNotifications((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            message,
+            type: 'order',
+            timestamp: new Date().toISOString()
+          }
+        ]);
+      } catch (e) {
+        console.error('Error handling order:updated notification for customer:', e);
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser, currentRole]);
+
   // Legacy support for existing code
   const registeredUsers = Object.values(users);
   const defaultUsers = {};
