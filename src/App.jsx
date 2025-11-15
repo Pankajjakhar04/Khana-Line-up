@@ -116,6 +116,19 @@ const KhanaLineupApp = () => {
   const [showCart, setShowCart] = useState(false);
   const [orderFilter, setOrderFilter] = useState('7days');
   const [isRegistering, setIsRegistering] = useState(false);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    name: '',
+    role: 'customer',
+    street: '',
+    city: '',
+    state: '',
+    zipCode: ''
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [estimatedTimes, setEstimatedTimes] = useState({}); // Local state for estimated time inputs
   
   // Admin order management state
@@ -191,21 +204,8 @@ const KhanaLineupApp = () => {
     updateSettings({ tokenCounter: newValue });
   };
 
-  // Authentication Form Component
+  // Authentication Form helper (returns JSX). Called as a function to avoid remounting and losing focus.
   const AuthForm = () => {
-    const [formData, setFormData] = useState({
-      email: '',
-      password: '',
-      name: '',
-      role: 'customer',
-      street: '',
-      city: '',
-      state: '',
-      zipCode: ''
-    });
-    const [showPassword, setShowPassword] = useState(false);
-    const [errors, setErrors] = useState({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const validateForm = () => {
       const newErrors = {};
@@ -3206,11 +3206,9 @@ const KhanaLineupApp = () => {
         </div>
       );
     }
-    return (
-      <div>
-        <AuthForm />
-      </div>
-    );
+    // Call AuthForm as a plain function so React treats its output as part of this component tree
+    // instead of a separate component that might remount and steal focus.
+    return AuthForm();
   }
 
   const renderContent = () => {
