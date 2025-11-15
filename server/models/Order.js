@@ -129,7 +129,7 @@ const orderSchema = new mongoose.Schema({
 // Indexes for better query performance
 orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ vendor: 1, status: 1, createdAt: -1 });
-orderSchema.index({ tokenId: 1 });
+// Note: `tokenId` already has `unique: true` which creates an index automatically.
 orderSchema.index({ status: 1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ 'timestamps.ordered': -1 });
