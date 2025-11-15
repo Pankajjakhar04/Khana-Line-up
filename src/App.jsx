@@ -857,16 +857,52 @@ const KhanaLineupApp = () => {
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
     const addToCart = (item) => {
-      const existingItem = cart.find(cartItem => cartItem.id === item.id);
+      // Normalize IDs so different items do not collapse into one
+      const newItemId = item._id || item.id;
+      const newVendorId = item.vendor?._id || item.vendorId || (typeof item.vendor === 'string' ? item.vendor : null);
+
+      // Determine current cart vendor (if any)
+      const currentCartVendorId = cart.length > 0
+        ? (cart[0].vendor?._id || cart[0].vendorId || (typeof cart[0].vendor === 'string' ? cart[0].vendor : null))
+        : null;
+
+      // Block multi-vendor carts on the client side
+      if (cart.length > 0 && currentCartVendorId && newVendorId && currentCartVendorId !== newVendorId) {
+        const currentVendorName =
+          cart[0].vendor?.restaurantName ||
+          cart[0].vendor?.name ||
+          'your current vendor';
+
+        const newVendorName =
+          item.vendor?.restaurantName ||
+          item.vendor?.name ||
+          'this vendor';
+
+        // Show clear, friendly in-app notification and do NOT modify the cart
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            type: 'warning',
+            message: `Multi-vendor order not allowed. You already have items from ${currentVendorName}. You can only order from one vendor at a time. Please complete or clear that order before adding items from ${newVendorName}.`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+
+        return;
+      }
+
+      const existingItem = cart.find(cartItem => (cartItem._id || cartItem.id) === newItemId);
 
       if (existingItem) {
-        setCart(cart.map(cartItem => 
-          cartItem.id === item.id 
+        setCart(cart.map(cartItem =>
+          (cartItem._id || cartItem.id) === newItemId
             ? { ...cartItem, quantity: cartItem.quantity + 1 }
             : cartItem
         ));
       } else {
-        setCart([...cart, { ...item, quantity: 1 }]);
+        // Store a normalized id on cart items to avoid future ambiguity
+        setCart([...cart, { ...item, id: newItemId, quantity: 1 }]);
       }
       
       setShowCart(true);
@@ -924,7 +960,7 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredItems.map(item => (
-              <div key={item.id} className={`bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
+              <div key={item._id || item.id} className={`bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
                 <div className="bg-gradient-to-br from-orange-100 to-red-100 h-32 flex items-center justify-center">
                   <Package size={40} className="text-orange-500" />
                 </div>
@@ -3300,19 +3336,36 @@ const KhanaLineupApp = () => {
     }
   };
 
+  // Prepare latest notification styling
+  const latestNotification = notifications[notifications.length - 1];
+  const notificationType = latestNotification?.type || 'info';
+
+  let notificationBgClass = 'bg-gradient-to-r from-green-500 to-emerald-500';
+  if (notificationType === 'warning') {
+    notificationBgClass = 'bg-gradient-to-r from-yellow-500 to-orange-500';
+  } else if (notificationType === 'error') {
+    notificationBgClass = 'bg-gradient-to-r from-red-500 to-rose-500';
+  } else if (notificationType === 'info') {
+    notificationBgClass = 'bg-gradient-to-r from-blue-500 to-indigo-500';
+  }
+
+  const NotificationIcon = (notificationType === 'error' || notificationType === 'warning')
+    ? AlertTriangle
+    : Bell;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-orange-50">
       <Navigation />
       
       {/* Notifications */}
-      {notifications.length > 0 && (currentRole === 'customer' || currentRole === 'vendor') && (
-        <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white p-3 sm:p-4 shadow-lg">
+      {notifications.length > 0 && (currentRole === 'customer' || currentRole === 'vendor') && latestNotification && (
+        <div className={`${notificationBgClass} text-white p-3 sm:p-4 shadow-lg`}>
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <div className="animate-pulse flex-shrink-0">
-                <Bell size={18} className="sm:w-5 sm:h-5" />
+                <NotificationIcon size={18} className="sm:w-5 sm:h-5" />
               </div>
-              <p className="font-medium text-sm sm:text-base truncate">{notifications[notifications.length - 1].message}</p>
+              <p className="font-medium text-sm sm:text-base truncate">{latestNotification.message}</p>
             </div>
             <button
               onClick={() => setNotifications([])}

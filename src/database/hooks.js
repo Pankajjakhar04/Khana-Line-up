@@ -529,6 +529,12 @@ export const useOrders = (currentUser, currentRole) => {
       return response.order;
     } catch (error) {
       console.error('Error creating order via API:', error);
+
+      // Preserve specific backend errors like multi-vendor validation
+      if (error?.errorType === 'MULTI_VENDOR_NOT_ALLOWED' || error?.data?.errorType === 'MULTI_VENDOR_NOT_ALLOWED') {
+        throw error;
+      }
+
       throw new Error('Failed to create order. Please check server connection.');
     }
   };
