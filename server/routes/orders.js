@@ -122,6 +122,16 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Ensure all items belong to the same vendor and match the order vendor
+    const distinctVendors = new Set(menuItems.map(item => item.vendor.toString()));
+    if (distinctVendors.size > 1 || !distinctVendors.has(vendor.toString())) {
+      return res.status(400).json({
+        success: false,
+        errorType: 'MULTI_VENDOR_NOT_ALLOWED',
+        message: 'You can only order items from one vendor at a time in a single order.'
+      });
+    }
+
     // Check stock availability
     for (const orderItem of items) {
       const menuItem = menuItems.find(item => item._id.toString() === orderItem.menuItem);
