@@ -29,12 +29,13 @@ router.get('/', async (req, res) => {
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
     
     const orders = await Order.find(query)
-      .populate('customer', 'name email phone')
-      .populate('vendor', 'name email')
+      .populate('customer', 'name email phone address')
+      .populate('vendor', 'name email phone address restaurantName')
       .populate('items.menuItem', 'name category price')
       .sort(sort)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
     
     const totalOrders = await Order.countDocuments(query);
     const totalPages = Math.ceil(totalOrders / parseInt(limit));
@@ -66,7 +67,8 @@ router.get('/:id', async (req, res) => {
     const order = await Order.findById(req.params.id)
       .populate('customer', 'name email phone address')
       .populate('vendor', 'name email phone address')
-      .populate('items.menuItem', 'name category price description');
+      .populate('items.menuItem', 'name category price description')
+      .lean();
     
     if (!order) {
       return res.status(404).json({
@@ -117,6 +119,16 @@ router.post('/', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Some menu items are not available'
+      });
+    }
+
+    // Ensure all items belong to the same vendor and match the order vendor
+    const distinctVendors = new Set(menuItems.map(item => item.vendor.toString()));
+    if (distinctVendors.size > 1 || !distinctVendors.has(vendor.toString())) {
+      return res.status(400).json({
+        success: false,
+        errorType: 'MULTI_VENDOR_NOT_ALLOWED',
+        message: 'You can only order items from one vendor at a time in a single order.'
       });
     }
 
@@ -177,9 +189,15 @@ router.post('/', async (req, res) => {
     // Populate the order for response
     await order.populate([
       { path: 'customer', select: 'name email phone' },
-      { path: 'vendor', select: 'name email' },
+      { path: 'vendor', select: 'name email phone address restaurantName' },
       { path: 'items.menuItem', select: 'name category' }
     ]);
+
+    // Emit realtime event immediately (in addition to change streams)
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('order:created', order);
+    }
 
     res.status(201).json({
       success: true,
@@ -227,10 +245,16 @@ router.put('/:id', async (req, res) => {
       updateData,
       { new: true, runValidators: true }
     ).populate([
-      { path: 'customer', select: 'name email phone' },
-      { path: 'vendor', select: 'name email' },
+      { path: 'customer', select: 'name email phone address' },
+      { path: 'vendor', select: 'name email phone address restaurantName' },
       { path: 'items.menuItem', select: 'name category' }
     ]);
+
+    // Emit realtime event
+    const io = req.app.get('io');
+    if (io && updatedOrder) {
+      io.emit('order:updated', updatedOrder);
+    }
 
     res.json({
       success: true,
@@ -279,10 +303,16 @@ router.put('/:id/status', async (req, res) => {
     await order.updateStatus(status, notes);
     
     await order.populate([
-      { path: 'customer', select: 'name email phone' },
-      { path: 'vendor', select: 'name email' },
+      { path: 'customer', select: 'name email phone address' },
+      { path: 'vendor', select: 'name email phone address restaurantName' },
       { path: 'items.menuItem', select: 'name category' }
     ]);
+
+    // Emit realtime event
+    const io = req.app.get('io');
+    if (io && order) {
+      io.emit('order:updated', order);
+    }
 
     res.json({
       success: true,
@@ -358,10 +388,11 @@ router.get('/customer/:customerId', async (req, res) => {
     if (status) query.status = status;
     
     const orders = await Order.find(query)
-      .populate('vendor', 'name email')
+      .populate('vendor', 'name email phone address restaurantName')
       .populate('items.menuItem', 'name category')
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
 
     res.json({
       success: true,
@@ -393,7 +424,8 @@ router.get('/vendor/:vendorId', async (req, res) => {
       .populate('customer', 'name email phone')
       .populate('items.menuItem', 'name category')
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
 
     res.json({
       success: true,
@@ -498,10 +530,16 @@ router.patch('/:id/cancel', async (req, res) => {
 
     // Populate the order before sending response
     await order.populate([
-      { path: 'customer', select: 'name email phone' },
-      { path: 'vendor', select: 'name email' },
+      { path: 'customer', select: 'name email phone address' },
+      { path: 'vendor', select: 'name email phone address restaurantName' },
       { path: 'items.menuItem', select: 'name category price' }
     ]);
+
+    // Emit realtime event
+    const io = req.app.get('io');
+    if (io && order) {
+      io.emit('order:updated', order);
+    }
 
     res.json({
       success: true,
@@ -544,6 +582,12 @@ router.delete('/:id', async (req, res) => {
 
     // Permanently delete the order
     await Order.findByIdAndDelete(req.params.id);
+
+    // Emit realtime delete event
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('order:deleted', { _id: req.params.id });
+    }
 
     res.json({
       success: true,

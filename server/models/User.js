@@ -93,7 +93,7 @@ const userSchema = new mongoose.Schema({
 });
 
 // Index for better query performance
-userSchema.index({ email: 1 });
+// Note: `email` already has `unique: true` which creates an index automatically.
 userSchema.index({ role: 1 });
 userSchema.index({ createdAt: -1 });
 

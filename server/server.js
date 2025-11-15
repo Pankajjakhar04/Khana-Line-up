@@ -2,8 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import { authRoutes, menuRoutes, orderRoutes, googleAuthRoutes } from './routes/index.js';
-import { User, MenuItem } from './models/index.js';
+import { User, MenuItem, Order } from './models/index.js';
 
 // Load environment variables from multiple sources
 dotenv.config(); // Load .env
@@ -11,6 +13,33 @@ dotenv.config({ path: '.env.local' }); // Load .env.local (for development)
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Create HTTP server for Socket.IO
+const httpServer = http.createServer(app);
+
+// Socket.IO setup with CORS matching Express
+const io = new SocketIOServer(httpServer, {
+  // Relaxed ping timings to avoid false timeouts during local tests
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  cors: {
+    origin: process.env.CORS_ORIGIN || [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:5173',
+      'https://khana-line-up-git-testing-pankajjakhar04.vercel.app',
+      'https://khana-line-up-pankajjakhar04.vercel.app',
+      /https:\/\/.*\.vercel\.app$/
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  }
+});
+
+// Make io accessible
+app.set('io', io);
 
 // MongoDB connection for serverless
 let isConnected = false;
@@ -206,21 +235,103 @@ app.use((err, req, res, next) => {
 // Initialize default data
 const initializeDefaultData = async () => {
   try {
-    console.log('Initializing default data...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Initializing default data...');
+    }
     
     // Create default admin user only
     await User.createDefaultUsers();
     
-    console.log('Default data initialization completed');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Default data initialization completed');
+    }
   } catch (error) {
     console.error('Error initializing default data:', error);
+  }
+};
+
+// Helper: setup MongoDB change streams and Socket.IO events
+const setupRealtime = async () => {
+  try {
+    await connectToDatabase();
+
+    // Socket.IO connection handlers
+    io.on('connection', (socket) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Socket connected: ${socket.id}`);
+      }
+
+      socket.on('disconnect', (reason) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Socket disconnected: ${socket.id} (${reason})`);
+        }
+      });
+    });
+
+    // Orders change stream
+    const orderStream = Order.watch([], { fullDocument: 'updateLookup' });
+    orderStream.on('change', (change) => {
+      try {
+        const { operationType, fullDocument, documentKey, updateDescription } = change;
+        if (operationType === 'insert') {
+          io.emit('order:created', fullDocument);
+        } else if (operationType === 'update' || operationType === 'replace') {
+          io.emit('order:updated', fullDocument);
+        } else if (operationType === 'delete') {
+          io.emit('order:deleted', { _id: documentKey._id });
+        }
+      } catch (e) {
+        console.error('Error processing order change stream event:', e);
+      }
+    });
+
+    orderStream.on('error', (err) => {
+      console.error('Order change stream error:', err);
+    });
+
+    // Menu items change stream
+    const menuStream = MenuItem.watch([], { fullDocument: 'updateLookup' });
+    menuStream.on('change', (change) => {
+      try {
+        const { operationType, fullDocument, documentKey } = change;
+        if (operationType === 'insert') {
+          io.emit('menu:created', fullDocument);
+        } else if (operationType === 'update' || operationType === 'replace') {
+          io.emit('menu:updated', fullDocument);
+        } else if (operationType === 'delete') {
+          io.emit('menu:deleted', { _id: documentKey._id });
+        }
+      } catch (e) {
+        console.error('Error processing menu change stream event:', e);
+      }
+    });
+
+    menuStream.on('error', (err) => {
+      console.error('Menu change stream error:', err);
+    });
+
+    // Cleanup on shutdown
+    const cleanup = async () => {
+      try {
+        await orderStream.close();
+      } catch {}
+      try {
+        await menuStream.close();
+      } catch {}
+      io.close();
+    };
+
+    process.on('SIGTERM', cleanup);
+    process.on('SIGINT', cleanup);
+  } catch (err) {
+    console.error('Failed to setup realtime layer:', err);
   }
 };
 
 // Only start server if not in serverless environment (like Vercel)
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   // Start server
-  const server = app.listen(PORT, async () => {
+  httpServer.listen(PORT, async () => {
     console.log(`
 🚀 Khana Line-up Server is running!
 📍 Environment: ${process.env.NODE_ENV || 'development'}
@@ -228,24 +339,12 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
 📊 Health Check: http://localhost:${PORT}/health
 📚 API Base: http://localhost:${PORT}/api
     `);
-    
+
     // Initialize default data after server starts
     setTimeout(initializeDefaultData, 2000);
-  });
 
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    server.close(() => {
-      console.log('Process terminated');
-    });
-  });
-
-  process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully');
-    server.close(() => {
-      console.log('Process terminated');
-    });
+    // Setup realtime after server is up
+    await setupRealtime();
   });
 } else {
   // For serverless environments, just initialize data

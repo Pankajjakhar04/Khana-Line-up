@@ -53,10 +53,11 @@ router.get('/', async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
     const items = await MenuItem.find(query)
-      .populate('vendor', 'name email restaurantName')
+      .populate('vendor', 'name email phone address restaurantName')
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
     
     const totalItems = await MenuItem.countDocuments(query);
     const totalPages = Math.ceil(totalItems / parseInt(limit));
@@ -112,7 +113,8 @@ router.get('/categories', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const item = await MenuItem.findById(req.params.id)
-      .populate('vendor', 'name email phone address restaurantName');
+      .populate('vendor', 'name email phone address restaurantName')
+      .lean();
     
     if (!item) {
       return res.status(404).json({
@@ -475,8 +477,9 @@ router.get('/vendor/:vendorId', async (req, res) => {
     }
 
     const items = await MenuItem.find(query)
-      .populate('vendor', 'name email')
-      .sort({ category: 1, name: 1 });
+      .populate('vendor', 'name email phone address restaurantName')
+      .sort({ category: 1, name: 1 })
+      .lean();
 
     res.json({
       success: true,

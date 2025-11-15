@@ -9,7 +9,20 @@ const router = express.Router();
 // @access  Public
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name, role, phone } = req.body;
+    const { 
+      email, 
+      password, 
+      name, 
+      role, 
+      phone,
+      // Address can be sent either as a flat string (address)
+      // or as individual fields (street, city, state, zipCode)
+      address,
+      street,
+      city,
+      state,
+      zipCode
+    } = req.body;
 
     // Validation
     if (!email || !password || !name) {
@@ -45,12 +58,33 @@ router.post('/register', async (req, res) => {
 
     if (phone) userData.phone = phone;
 
+    // Normalize address into nested structure if provided
+    if (address || street || city || state || zipCode) {
+      const addrObject = typeof address === 'object' && address !== null
+        ? address
+        : {
+            street: street || (typeof address === 'string' ? address : undefined),
+            city,
+            state,
+            zipCode,
+          };
+
+      userData.address = {
+        street: addrObject.street,
+        city: addrObject.city,
+        state: addrObject.state,
+        zipCode: addrObject.zipCode,
+      };
+    }
+
     // Set approval status based on role
     // Vendors need approval, customers and admins are auto-approved
     userData.isApproved = (role !== 'vendor');
     
-    console.log('Registration userData:', { ...userData, password: '[HIDDEN]' });
-    console.log('Role:', role, 'isApproved:', userData.isApproved);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Registration userData:', { ...userData, password: '[HIDDEN]' });
+      console.log('Role:', role, 'isApproved:', userData.isApproved);
+    }
 
     const user = new User(userData);
     await user.save();
@@ -116,7 +150,9 @@ router.post('/login', async (req, res) => {
     }
 
     // Check if vendor is approved (only for vendors)
-    console.log('Login attempt - User role:', user.role, 'isApproved:', user.isApproved);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Login attempt - User role:', user.role, 'isApproved:', user.isApproved);
+    }
     if (user.role === 'vendor' && !user.isApproved) {
       console.log('Vendor login blocked - pending approval');
       return res.status(403).json({
@@ -171,7 +207,8 @@ router.get('/users', async (req, res) => {
 
     const users = await User.find(query)
       .select('-password') // Exclude password field
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({
       success: true,
@@ -194,7 +231,7 @@ router.get('/users', async (req, res) => {
 // @access  Public (should be protected in production)
 router.get('/user/:id', async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    const user = await User.findById(req.params.id).select('-password').lean();
     
     if (!user) {
       return res.status(404).json({
@@ -362,7 +399,9 @@ router.post('/reset-database', async (req, res) => {
   try {
     const { User, MenuItem, Order } = await import('../models/index.js');
     
-    console.log('Starting database reset...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Starting database reset...');
+    }
     
     // Delete all collections
     await Promise.all([
@@ -371,7 +410,9 @@ router.post('/reset-database', async (req, res) => {
       Order.deleteMany({})
     ]);
     
-    console.log('All data deleted. Recreating ONLY admin user...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('All data deleted. Recreating ONLY admin user...');
+    }
     
     // Create ONLY admin user - no other users
     const adminUser = new User({
@@ -398,7 +439,9 @@ router.post('/reset-database', async (req, res) => {
     });
     
     await adminUser.save();
-    console.log('Default admin user created');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Default admin user created');
+    }
     
     res.json({
       success: true,

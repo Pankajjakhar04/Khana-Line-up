@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import apiService from '../services/api.js';
+import socket, { on as onSocket, off as offSocket } from '../services/socket.js';
 
 // Custom hook for users
 export const useUsers = () => {
@@ -7,19 +8,25 @@ export const useUsers = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('useUsers hook mounted, loading users...');
+    if (import.meta.env.DEV) {
+      console.log('useUsers hook mounted, loading users...');
+    }
     loadUsers();
   }, []);
 
   const loadUsers = async () => {
     try {
       setLoading(true);
-      console.log('Attempting to load users from API...');
-      console.log('API Service:', apiService);
-      console.log('API Base URL:', apiService.baseURL);
+      if (import.meta.env.DEV) {
+        console.log('Attempting to load users from API...');
+        console.log('API Service:', apiService);
+        console.log('API Base URL:', apiService.baseURL);
+      }
       
       const response = await apiService.getAllUsers();
-      console.log('API Response:', response);
+      if (import.meta.env.DEV) {
+        console.log('API Response:', response);
+      }
       
       // Convert array to object with user IDs as keys
       const usersObj = {};
@@ -30,7 +37,9 @@ export const useUsers = () => {
         };
       });
       
-      console.log('Loaded users from API:', usersObj);
+      if (import.meta.env.DEV) {
+        console.log('Loaded users from API:', usersObj);
+      }
       setUsers(usersObj);
     } catch (error) {
       console.error('Error loading users from API:', error);
@@ -45,9 +54,13 @@ export const useUsers = () => {
 
   const addUser = async (user) => {
     try {
-      console.log('Attempting to register user via API:', user);
+      if (import.meta.env.DEV) {
+        console.log('Attempting to register user via API:', user);
+      }
       const response = await apiService.register(user);
-      console.log('Registration API response:', response);
+      if (import.meta.env.DEV) {
+        console.log('Registration API response:', response);
+      }
       const newUser = {
         ...response.user,
         id: response.user._id
@@ -65,9 +78,13 @@ export const useUsers = () => {
 
   const updateUser = async (userId, updates) => {
     try {
-      console.log('Updating user via API:', userId, updates);
+      if (import.meta.env.DEV) {
+        console.log('Updating user via API:', userId, updates);
+      }
       const response = await apiService.updateUser(userId, updates);
-      console.log('User updated via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('User updated via API:', response);
+      }
       const updatedUser = {
         ...response.user,
         id: response.user._id
@@ -82,9 +99,13 @@ export const useUsers = () => {
 
   const deleteUser = async (userId) => {
     try {
-      console.log('Deleting user via API:', userId);
+      if (import.meta.env.DEV) {
+        console.log('Deleting user via API:', userId);
+      }
       await apiService.deleteUser(userId);
-      console.log('User deleted via API');
+      if (import.meta.env.DEV) {
+        console.log('User deleted via API');
+      }
       setUsers(prev => {
         const newUsers = { ...prev };
         delete newUsers[userId];
@@ -99,9 +120,13 @@ export const useUsers = () => {
 
   const getUserByCredentials = async (email, password) => {
     try {
-      console.log('Attempting to login via API:', email);
+      if (import.meta.env.DEV) {
+        console.log('Attempting to login via API:', email);
+      }
       const response = await apiService.login({ email, password });
-      console.log('Login API response:', response);
+      if (import.meta.env.DEV) {
+        console.log('Login API response:', response);
+      }
       const user = {
         ...response.user,
         id: response.user._id
@@ -124,7 +149,9 @@ export const useUsers = () => {
   };
 
   const refreshUsers = async () => {
-    console.log('Force refreshing users from API...');
+    if (import.meta.env.DEV) {
+      console.log('Force refreshing users from API...');
+    }
     setUsers({}); // Clear current state
     await loadUsers();
   };
@@ -171,9 +198,13 @@ export const useVendorApprovals = () => {
 
   const approveVendor = async (vendorId, adminId) => {
     try {
-      console.log('Approving vendor:', vendorId, 'by admin:', adminId);
+      if (import.meta.env.DEV) {
+        console.log('Approving vendor:', vendorId, 'by admin:', adminId);
+      }
       const response = await apiService.approveVendor(vendorId, adminId);
-      console.log('Approve vendor response:', response);
+      if (import.meta.env.DEV) {
+        console.log('Approve vendor response:', response);
+      }
       
       if (response.success) {
         // Remove from pending list
@@ -191,9 +222,13 @@ export const useVendorApprovals = () => {
 
   const rejectVendor = async (vendorId) => {
     try {
-      console.log('Rejecting vendor:', vendorId);
+      if (import.meta.env.DEV) {
+        console.log('Rejecting vendor:', vendorId);
+      }
       const response = await apiService.rejectVendor(vendorId);
-      console.log('Reject vendor response:', response);
+      if (import.meta.env.DEV) {
+        console.log('Reject vendor response:', response);
+      }
       
       if (response.success) {
         // Remove from pending list
@@ -210,7 +245,9 @@ export const useVendorApprovals = () => {
   };
 
   const refreshPendingVendors = async () => {
-    console.log('Force refreshing pending vendors...');
+    if (import.meta.env.DEV) {
+      console.log('Force refreshing pending vendors...');
+    }
     await loadPendingVendors();
   };
 
@@ -230,16 +267,54 @@ export const useMenuItems = () => {
 
   useEffect(() => {
     loadMenuItems();
+
+    // Realtime menu updates
+    const unsubscribes = [];
+
+    unsubscribes.push(onSocket('menu:created', (doc) => {
+      // Keep list consistent with initial query (only available, isActive, stock>0)
+      if (doc?.available && doc?.isActive !== false && (doc?.stock ?? 0) > 0) {
+        setMenuItems((prev) => {
+          // avoid duplicates
+          if (prev.find((i) => i._id === doc._id)) return prev;
+          return [doc, ...prev];
+        });
+      }
+    }));
+
+    unsubscribes.push(onSocket('menu:updated', (doc) => {
+      setMenuItems((prev) => {
+        // If updated doc no longer matches list criteria, remove it
+        const stillMatches = doc?.available && doc?.isActive !== false && (doc?.stock ?? 0) > 0;
+        if (!stillMatches) return prev.filter((i) => i._id !== doc._id);
+        // else replace
+        const idx = prev.findIndex((i) => i._id === doc._id);
+        if (idx === -1) return [doc, ...prev];
+        const next = [...prev];
+        next[idx] = doc;
+        return next;
+      });
+    }));
+
+    unsubscribes.push(onSocket('menu:deleted', ({ _id }) => {
+      setMenuItems((prev) => prev.filter((i) => i._id !== _id));
+    }));
+
+    return () => unsubscribes.forEach((u) => u && u());
   }, []);
 
   const loadMenuItems = async () => {
     try {
       setLoading(true);
-      console.log('Loading menu items from API...');
-      console.log('API Service base URL:', apiService.baseURL);
+      if (import.meta.env.DEV) {
+        console.log('Loading menu items from API...');
+        console.log('API Service base URL:', apiService.baseURL);
+      }
       const response = await apiService.getMenuItems();
-      console.log('Menu items API response:', response);
-      console.log('Menu items count:', response.items?.length || 0);
+      if (import.meta.env.DEV) {
+        console.log('Menu items API response:', response);
+        console.log('Menu items count:', response.items?.length || 0);
+      }
       setMenuItems(response.items || []);
     } catch (error) {
       console.error('Error loading menu items from API:', error);
@@ -249,15 +324,21 @@ export const useMenuItems = () => {
       setMenuItems([]);
     } finally {
       setLoading(false);
-      console.log('Menu items loading completed');
+      if (import.meta.env.DEV) {
+        console.log('Menu items loading completed');
+      }
     }
   };
 
   const addMenuItem = async (item) => {
     try {
-      console.log('Adding menu item via API:', item);
+      if (import.meta.env.DEV) {
+        console.log('Adding menu item via API:', item);
+      }
       const response = await apiService.createMenuItem(item);
-      console.log('Menu item added via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Menu item added via API:', response);
+      }
       setMenuItems(prev => [...prev, response.item]);
       return response.item;
     } catch (error) {
@@ -268,9 +349,13 @@ export const useMenuItems = () => {
 
   const updateMenuItem = async (itemId, updates) => {
     try {
-      console.log('Updating menu item via API:', itemId, updates);
+      if (import.meta.env.DEV) {
+        console.log('Updating menu item via API:', itemId, updates);
+      }
       const response = await apiService.updateMenuItem(itemId, updates);
-      console.log('Menu item updated via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Menu item updated via API:', response);
+      }
       setMenuItems(prev => prev.map(item => 
         item._id === itemId ? response.item : item
       ));
@@ -283,9 +368,13 @@ export const useMenuItems = () => {
 
   const deleteMenuItem = async (itemId) => {
     try {
-      console.log('Deleting menu item via API:', itemId);
+      if (import.meta.env.DEV) {
+        console.log('Deleting menu item via API:', itemId);
+      }
       await apiService.deleteMenuItem(itemId);
-      console.log('Menu item deleted via API');
+      if (import.meta.env.DEV) {
+        console.log('Menu item deleted via API');
+      }
       setMenuItems(prev => prev.filter(item => item._id !== itemId));
       return true;
     } catch (error) {
@@ -296,9 +385,13 @@ export const useMenuItems = () => {
 
   const updateStock = async (itemId, stockChange) => {
     try {
-      console.log('Updating stock via API:', itemId, stockChange);
+      if (import.meta.env.DEV) {
+        console.log('Updating stock via API:', itemId, stockChange);
+      }
       const response = await apiService.updateMenuItemStock(itemId, stockChange);
-      console.log('Stock updated via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Stock updated via API:', response);
+      }
       setMenuItems(prev => prev.map(item => 
         item._id === itemId ? response.item : item
       ));
@@ -314,7 +407,9 @@ export const useMenuItems = () => {
   };
 
   const refreshMenuItems = async () => {
-    console.log('Force refreshing menu items from API...');
+    if (import.meta.env.DEV) {
+      console.log('Force refreshing menu items from API...');
+    }
     setMenuItems([]); // Clear current state
     await loadMenuItems();
   };
@@ -332,14 +427,37 @@ export const useMenuItems = () => {
 };
 
 // Custom hook for orders
-export const useOrders = () => {
+export const useOrders = (currentUser, currentRole) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadOrders();
+
+    // Realtime order updates
+    const unsubscribes = [];
+    unsubscribes.push(onSocket('order:created', (doc) => {
+      setOrders((prev) => {
+        if (!doc || !doc._id) return prev;
+        if (prev.find((o) => o._id === doc._id)) return prev;
+        return [doc, ...prev];
+      });
+    }));
+    unsubscribes.push(onSocket('order:updated', (doc) => {
+      setOrders((prev) => {
+        const idx = prev.findIndex((o) => o._id === doc._id);
+        if (idx === -1) return [doc, ...prev];
+        const next = [...prev];
+        next[idx] = doc;
+        return next;
+      });
+    }));
+    unsubscribes.push(onSocket('order:deleted', ({ _id }) => {
+      setOrders((prev) => prev.filter((o) => o._id !== _id));
+    }));
     
-    // Set up periodic refresh every 30 seconds, but only if we're not on the login page
+    // Set up periodic refresh (every 20 seconds) as a fallback in case realtime fails,
+    // but only if we're not on the login/registration page
     // Check if there's any user authenticated to prevent refresh during login
     const interval = setInterval(() => {
       // Only auto-refresh if user is likely logged in (check localStorage)
@@ -351,17 +469,43 @@ export const useOrders = () => {
       if (savedAuth && !isInAuthFlow) {
         loadOrders();
       }
-    }, 30000);
+    }, 20000);
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(interval);
+      unsubscribes.forEach(u => u && u());
+    };
+  }, [currentUser, currentRole]);
 
-  const loadOrders = async () => {
+  const loadOrders = async (user = currentUser, role = currentRole) => {
     try {
+      // If no authenticated user/role, avoid unnecessary load under traffic
+      if (!user || !role) {
+        setOrders([]);
+        return;
+      }
+
       setLoading(true);
-      console.log('Loading orders from API...');
-      const response = await apiService.getOrders();
-      console.log('Orders loaded from API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Loading orders from API for role:', role, 'user:', user?.id || user?._id);
+      }
+
+      const userId = user?.id || user?._id;
+      let response;
+
+      if (role === 'customer' && userId) {
+        response = await apiService.getCustomerOrders(userId);
+      } else if (role === 'vendor' && userId) {
+        response = await apiService.getVendorOrders(userId);
+      } else {
+        // Admin or unknown role -> full list with default filters
+        response = await apiService.getOrders();
+      }
+
+      if (import.meta.env.DEV) {
+        console.log('Orders loaded from API:', response);
+      }
+
       setOrders(response.orders || []);
     } catch (error) {
       console.error('Error loading orders from API:', error);
@@ -374,9 +518,13 @@ export const useOrders = () => {
 
   const addOrder = async (order) => {
     try {
-      console.log('Creating order via API:', order);
+      if (import.meta.env.DEV) {
+        console.log('Creating order via API:', order);
+      }
       const response = await apiService.createOrder(order);
-      console.log('Order created via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Order created via API:', response);
+      }
       setOrders(prev => [response.order, ...prev]);
       return response.order;
     } catch (error) {
@@ -387,9 +535,13 @@ export const useOrders = () => {
 
   const updateOrder = async (orderId, updates) => {
     try {
-      console.log('Updating order via API:', orderId, updates);
+      if (import.meta.env.DEV) {
+        console.log('Updating order via API:', orderId, updates);
+      }
       const response = await apiService.updateOrder(orderId, updates);
-      console.log('Order updated via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Order updated via API:', response);
+      }
       setOrders(prev => prev.map(order => {
         const orderIdMatch = order._id === orderId || order.id === orderId;
         return orderIdMatch ? response.order : order;
@@ -403,7 +555,9 @@ export const useOrders = () => {
 
   const updateOrderStatus = async (orderId, statusOrData) => {
     try {
-      console.log('Updating order status via API:', orderId, statusOrData);
+      if (import.meta.env.DEV) {
+        console.log('Updating order status via API:', orderId, statusOrData);
+      }
       
       // Handle both old format (just status string) and new format (data object)
       const statusData = typeof statusOrData === 'string' 
@@ -411,7 +565,9 @@ export const useOrders = () => {
         : statusOrData;
       
       const response = await apiService.updateOrderStatus(orderId, statusData);
-      console.log('Order status updated via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Order status updated via API:', response);
+      }
       setOrders(prev => prev.map(order => {
         const orderIdMatch = order._id === orderId || order.id === orderId;
         if (orderIdMatch) {
@@ -429,11 +585,15 @@ export const useOrders = () => {
 
   const cancelOrder = async (orderId, reason = '', cancelledBy = 'customer') => {
     try {
-      console.log('Cancelling order via API:', orderId, 'by:', cancelledBy);
+      if (import.meta.env.DEV) {
+        console.log('Cancelling order via API:', orderId, 'by:', cancelledBy);
+      }
       const cancellationData = { reason, cancelledBy };
       
       const response = await apiService.cancelOrder(orderId, cancellationData);
-      console.log('Order cancelled via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Order cancelled via API:', response);
+      }
       
       // Update local state
       setOrders(prev => prev.map(order => 
@@ -450,9 +610,13 @@ export const useOrders = () => {
 
   const deleteOrder = async (orderId) => {
     try {
-      console.log('Deleting order via API:', orderId);
+      if (import.meta.env.DEV) {
+        console.log('Deleting order via API:', orderId);
+      }
       await apiService.deleteOrder(orderId);
-      console.log('Order deleted via API');
+      if (import.meta.env.DEV) {
+        console.log('Order deleted via API');
+      }
       setOrders(prev => prev.filter(order => order._id !== orderId));
       return true;
     } catch (error) {
@@ -463,10 +627,14 @@ export const useOrders = () => {
 
   const deleteMultipleOrders = async (orderIds) => {
     try {
-      console.log('Deleting multiple orders via API:', orderIds);
+      if (import.meta.env.DEV) {
+        console.log('Deleting multiple orders via API:', orderIds);
+      }
       // Since there's no bulk delete endpoint, delete one by one
       await Promise.all(orderIds.map(id => apiService.deleteOrder(id)));
-      console.log('Multiple orders deleted via API');
+      if (import.meta.env.DEV) {
+        console.log('Multiple orders deleted via API');
+      }
       setOrders(prev => prev.filter(order => !orderIds.includes(order._id)));
       return true;
     } catch (error) {
@@ -477,7 +645,9 @@ export const useOrders = () => {
 
   const deleteOrdersByDateRange = async (startDate, endDate) => {
     try {
-      console.log('Deleting orders by date range via API:', startDate, endDate);
+      if (import.meta.env.DEV) {
+        console.log('Deleting orders by date range via API:', startDate, endDate);
+      }
       const start = new Date(startDate);
       const end = new Date(endDate);
       
@@ -489,7 +659,9 @@ export const useOrders = () => {
       
       // Delete them via API
       await Promise.all(ordersToDelete.map(order => apiService.deleteOrder(order._id)));
-      console.log('Orders deleted by date range via API');
+      if (import.meta.env.DEV) {
+        console.log('Orders deleted by date range via API');
+      }
       
       setOrders(prev => prev.filter(order => {
         const orderDate = new Date(order.createdAt || order.timestamp);
@@ -526,7 +698,9 @@ export const useOrders = () => {
   };
 
   const refreshOrders = async () => {
-    console.log('Force refreshing orders from API...');
+    if (import.meta.env.DEV) {
+      console.log('Force refreshing orders from API...');
+    }
     setOrders([]); // Clear current state
     await loadOrders();
   };
@@ -566,7 +740,9 @@ export const useSettings = () => {
   const updateSettings = async (newSettings) => {
     try {
       // TODO: Implement settings API
-      console.log('Settings updated locally (API not implemented yet):', newSettings);
+      if (import.meta.env.DEV) {
+        console.log('Settings updated locally (API not implemented yet):', newSettings);
+      }
       setSettings(prev => ({ ...prev, ...newSettings }));
       return true;
     } catch (error) {
@@ -586,13 +762,17 @@ export const useSettings = () => {
 export const useAnalytics = () => {
   const getPopularItems = (limit = 10) => {
     // TODO: Implement analytics API
-    console.log('Analytics not implemented yet - using local data');
+    if (import.meta.env.DEV) {
+      console.log('Analytics not implemented yet - using local data');
+    }
     return [];
   };
 
   const getSalesData = (days = 7) => {
     // TODO: Implement analytics API
-    console.log('Sales data analytics not implemented yet');
+    if (import.meta.env.DEV) {
+      console.log('Sales data analytics not implemented yet');
+    }
     return {
       totalOrders: 0,
       completedOrders: 0,
@@ -603,7 +783,9 @@ export const useAnalytics = () => {
 
   const getDailySales = (days = 30) => {
     // TODO: Implement analytics API
-    console.log('Daily sales analytics not implemented yet');
+    if (import.meta.env.DEV) {
+      console.log('Daily sales analytics not implemented yet');
+    }
     return {};
   };
 
@@ -619,7 +801,9 @@ export const useDatabase = () => {
   const exportData = async () => {
     try {
       // TODO: Implement export API
-      console.log('Data export not implemented yet');
+      if (import.meta.env.DEV) {
+        console.log('Data export not implemented yet');
+      }
       return null;
     } catch (error) {
       console.error('Error exporting data:', error);
@@ -630,7 +814,9 @@ export const useDatabase = () => {
   const importData = async (jsonData) => {
     try {
       // TODO: Implement import API
-      console.log('Data import not implemented yet');
+      if (import.meta.env.DEV) {
+        console.log('Data import not implemented yet');
+      }
       return false;
     } catch (error) {
       console.error('Error importing data:', error);
@@ -641,7 +827,9 @@ export const useDatabase = () => {
   const createBackup = async () => {
     try {
       // TODO: Implement backup API
-      console.log('Backup creation not implemented yet');
+      if (import.meta.env.DEV) {
+        console.log('Backup creation not implemented yet');
+      }
       return null;
     } catch (error) {
       console.error('Error creating backup:', error);
@@ -652,7 +840,9 @@ export const useDatabase = () => {
   const getBackups = async () => {
     try {
       // TODO: Implement backup listing API
-      console.log('Backup listing not implemented yet');
+      if (import.meta.env.DEV) {
+        console.log('Backup listing not implemented yet');
+      }
       return [];
     } catch (error) {
       console.error('Error getting backups:', error);
@@ -663,7 +853,9 @@ export const useDatabase = () => {
   const restoreBackup = async (backupIndex) => {
     try {
       // TODO: Implement backup restore API
-      console.log('Backup restore not implemented yet');
+      if (import.meta.env.DEV) {
+        console.log('Backup restore not implemented yet');
+      }
       return false;
     } catch (error) {
       console.error('Error restoring backup:', error);
@@ -673,9 +865,13 @@ export const useDatabase = () => {
 
   const clearDatabase = async () => {
     try {
-      console.log('Clearing database via API...');
+      if (import.meta.env.DEV) {
+        console.log('Clearing database via API...');
+      }
       const response = await apiService.resetDatabase();
-      console.log('Database cleared via API:', response);
+      if (import.meta.env.DEV) {
+        console.log('Database cleared via API:', response);
+      }
       return response.success;
     } catch (error) {
       console.error('Error clearing database via API:', error);

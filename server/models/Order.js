@@ -4,7 +4,8 @@ const orderSchema = new mongoose.Schema({
   tokenId: {
     type: Number,
     required: true,
-    unique: true
+    // Use a non-unique index; tokens reset each day so they are not globally unique
+    index: true
   },
   customer: {
     type: mongoose.Schema.Types.ObjectId,
@@ -129,7 +130,7 @@ const orderSchema = new mongoose.Schema({
 // Indexes for better query performance
 orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ vendor: 1, status: 1, createdAt: -1 });
-orderSchema.index({ tokenId: 1 });
+// Note: `tokenId` already has `unique: true` which creates an index automatically.
 orderSchema.index({ status: 1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ 'timestamps.ordered': -1 });
@@ -246,10 +247,17 @@ orderSchema.statics.getVendorOrders = function(vendorId, status = null, limit = 
     .limit(limit);
 };
 
-// Static method to get next token ID
+// Static method to get next token ID (resets daily)
 orderSchema.statics.getNextTokenId = async function() {
-  const lastOrder = await this.findOne().sort({ tokenId: -1 });
-  return lastOrder ? lastOrder.tokenId + 1 : 1;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  // Only consider orders from today when determining the next token
+  const lastOrderToday = await this.findOne({ createdAt: { $gte: startOfToday } })
+    .sort({ tokenId: -1 })
+    .lean();
+
+  return lastOrderToday ? (lastOrderToday.tokenId || 0) + 1 : 1;
 };
 
 // Static method for analytics
