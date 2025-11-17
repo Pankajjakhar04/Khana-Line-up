@@ -448,7 +448,7 @@ const KhanaLineupApp = () => {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-400 via-red-400 to-pink-500 flex items-center justify-center p-4">
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 sm:p-8 w-full max-w-md mx-auto">
+        <div className="glass rounded-3xl p-6 sm:p-8 w-full max-w-md mx-auto">
           <div className="flex justify-end mb-2">
             <button
               type="button"
@@ -795,8 +795,8 @@ const KhanaLineupApp = () => {
     };
 
     return (
-      <nav className="bg-white dark:bg-slate-800 shadow-xl sticky top-0 z-50 mobile-menu-container">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <nav className="sticky top-0 z-50 mobile-menu-container bg-transparent">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 glass">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center gap-3">
               <div className="bg-gradient-to-r from-orange-500 to-red-500 p-2 rounded-xl">
@@ -1048,7 +1048,7 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredItems.map(item => (
-              <div key={item._id || item.id} className={`menu-card bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
+              <div key={item._id || item.id} className={`menu-card glass rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
                 <div className="bg-gradient-to-br from-orange-100 to-red-100 h-32 flex items-center justify-center">
                   <Package size={40} className="text-orange-500" />
                 </div>
@@ -1216,7 +1216,7 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="space-y-6">
             {cart.map(item => (
-              <div key={item.id} className="bg-white rounded-2xl shadow-lg p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-xl transition-all duration-300">
+              <div key={item.id} className="glass rounded-2xl shadow-lg p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-xl transition-all duration-300">
                 <div className="flex-1">
                   <h4 className="text-lg font-semibold mb-1">{item.name}</h4>
                   <p className="text-gray-600">₹{item.price} each</p>
@@ -1427,7 +1427,7 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="space-y-6">
             {ordersToShow.map(order => (
-              <div key={order._id || order.id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300">
+              <div key={order._id || order.id} className="glass rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                   <div>
                     <h3 className="text-xl font-bold text-orange-600">Token #{order.tokenId}</h3>
@@ -1681,7 +1681,7 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {queueOrders.map(order => (
-              <div key={order._id || order.id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 transform hover:scale-105">
+              <div key={order._id || order.id} className="glass rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 transform hover:scale-105">
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-orange-600">Token #{order.tokenId}</h3>
