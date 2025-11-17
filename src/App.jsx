@@ -1103,11 +1103,14 @@ const KhanaLineupApp = () => {
         {cart.length > 0 && (
           <button
             onClick={() => setActiveTab('cart')}
-            className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 bg-gradient-to-r from-orange-500 to-red-500 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 transform hover:scale-110 z-50 ${
+            className={`fixed inset-x-4 bottom-4 sm:inset-auto sm:bottom-6 sm:right-6 bg-gradient-to-r from-orange-500 to-red-500 text-white py-3 sm:p-4 rounded-2xl sm:rounded-full shadow-2xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 transform hover:scale-105 z-50 flex items-center justify-center gap-2 ${
               showCart ? 'animate-bounce' : ''
             }`}
           >
             <ShoppingCart size={20} className="sm:w-6 sm:h-6" />
+            <span className="hidden xs:inline-block font-semibold text-sm">
+              View Cart
+            </span>
             <span className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-500 text-white rounded-full px-1.5 py-0.5 sm:px-2 sm:py-1 text-xs animate-pulse min-w-[20px] text-center">
               {cart.length}
             </span>
