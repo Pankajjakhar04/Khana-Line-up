@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { 
   Users, 
   ShoppingCart, 

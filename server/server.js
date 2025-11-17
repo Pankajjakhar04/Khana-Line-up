@@ -250,10 +250,34 @@ const initializeDefaultData = async () => {
   }
 };
 
+// Helper: ensure MongoDB indexes are compatible with current schema
+// In particular, older deployments may still have a UNIQUE index on `tokenId`,
+// but tokens are only unique per day, so that unique constraint must be removed.
+const ensureOrderIndexes = async () => {
+  try {
+    const indexes = await Order.collection.indexes();
+    const tokenIndex = indexes.find((idx) => idx.name === 'tokenId_1');
+
+    if (tokenIndex && tokenIndex.unique) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🛠  Dropping legacy UNIQUE index on orders.tokenId...');
+      }
+      await Order.collection.dropIndex('tokenId_1');
+      await Order.collection.createIndex({ tokenId: 1 });
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Recreated NON-UNIQUE index on orders.tokenId');
+      }
+    }
+  } catch (err) {
+    console.error('Error ensuring Order indexes:', err);
+  }
+};
+
 // Helper: setup MongoDB change streams and Socket.IO events
 const setupRealtime = async () => {
   try {
     await connectToDatabase();
+    await ensureOrderIndexes();
 
     // Socket.IO connection handlers
     io.on('connection', (socket) => {
