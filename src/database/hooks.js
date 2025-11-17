@@ -339,7 +339,12 @@ export const useMenuItems = () => {
       if (import.meta.env.DEV) {
         console.log('Menu item added via API:', response);
       }
-      setMenuItems(prev => [...prev, response.item]);
+      // Avoid duplicates: realtime 'menu:created' listener will also push this item
+      setMenuItems(prev => {
+        if (!response?.item?._id) return [...prev, response.item];
+        if (prev.some(i => i._id === response.item._id)) return prev;
+        return [...prev, response.item];
+      });
       return response.item;
     } catch (error) {
       console.error('Error adding menu item via API:', error);
