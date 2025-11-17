@@ -58,3 +58,63 @@ button {
   -ms-user-select: none;
   user-select: none;
 }
+
+/* Dark mode overrides */
+html.dark body {
+  background-color: #111827; /* gray-900: dark grey instead of pure black */
+  color: #e5e7eb; /* gray-200 */
+}
+
+html.dark .bg-white {
+  background-color: #111827; /* gray-900 */
+}
+
+html.dark .bg-gray-50 {
+  background-color: #1f2937; /* gray-800 */
+}
+
+html.dark .bg-gray-100 {
+  background-color: #374151; /* gray-700 */
+}
+
+html.dark .bg-gray-200 {
+  background-color: #4b5563; /* gray-600 */
+}
+
+html.dark .text-gray-800 {
+  color: #e5e7eb; /* gray-200 */
+}
+
+html.dark .text-gray-700 {
+  color: #d1d5db; /* gray-300 */
+}
+
+html.dark .text-gray-600 {
+  color: #9ca3af; /* gray-400 */
+}
+
+/* Ensure very dark text classes stay readable on dark backgrounds */
+html.dark .text-gray-900,
+html.dark .text-black {
+  color: #f9fafb; /* gray-50 */
+}
+
+/* Dark mode form elements */
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #111827; /* gray-900 */
+  color: #f9fafb; /* gray-50 */
+  border-color: #4b5563; /* gray-600 */
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #9ca3af; /* gray-400 */
+}
+
+/* Dark mode: highlight menu item cards so they stand out from background */
+html.dark .menu-card {
+  background-color: #0b1120; /* slightly lighter than page background */
+  border: 1px solid rgba(148, 163, 184, 0.35); /* slate-400-ish border for separation */
+}

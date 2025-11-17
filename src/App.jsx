@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu } from 'lucide-react';
+import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu, Moon, Sun } from 'lucide-react';
 import SearchField from './components/SearchField';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
@@ -115,12 +115,16 @@ const KhanaLineupApp = () => {
   const [vendorSearchQuery, setVendorSearchQuery] = useState('');
   const [showCart, setShowCart] = useState(false);
   const [orderFilter, setOrderFilter] = useState('7days');
+  const [customerOrdersShowHistory, setCustomerOrdersShowHistory] = useState(false);
+  const [customerOrdersHistoryFilterType, setCustomerOrdersHistoryFilterType] = useState('all');
+  const [customerOrdersHistoryFilterDate, setCustomerOrdersHistoryFilterDate] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     name: '',
     role: 'customer',
+    phone: '',
     street: '',
     city: '',
     state: '',
@@ -142,6 +146,31 @@ const KhanaLineupApp = () => {
   // Profile dropdown state
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  // Theme state (light / dark)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const stored = window.localStorage.getItem('khanaLineupTheme');
+      if (stored === 'dark') return true;
+      if (stored === 'light') return false;
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch {
+      return false;
+    }
+  });
+
+  // Sync theme to <html> class and localStorage
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const theme = isDarkMode ? 'dark' : 'light';
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    try {
+      window.localStorage.setItem('khanaLineupTheme', theme);
+    } catch {
+      // ignore storage errors
+    }
+  }, [isDarkMode]);
 
   // Close profile dropdown and mobile menu when clicking outside
   useEffect(() => {
@@ -273,6 +302,14 @@ const KhanaLineupApp = () => {
       if (!formData.email) newErrors.email = 'Email is required';
       if (!formData.password) newErrors.password = 'Password is required';
       if (isRegistering && !formData.name) newErrors.name = 'Name is required';
+      if (isRegistering && !formData.phone) {
+        newErrors.phone = 'Mobile number is required';
+      } else if (isRegistering && formData.phone) {
+        const digitsOnly = formData.phone.replace(/\D/g, '');
+        if (digitsOnly.length !== 10) {
+          newErrors.phone = 'Enter a valid 10-digit mobile number';
+        }
+      }
       if (isRegistering && formData.password.length < 6) {
         newErrors.password = 'Password must be at least 6 characters';
       }
@@ -303,6 +340,7 @@ const KhanaLineupApp = () => {
           password: formData.password,
           name: formData.name,
           role: formData.role,
+          phone: formData.phone,
           status: 'active'
         };
 
@@ -324,6 +362,7 @@ const KhanaLineupApp = () => {
             password: '', 
             name: '', 
             role: 'customer',
+            phone: '',
             street: '',
             city: '',
             state: '',
@@ -359,7 +398,17 @@ const KhanaLineupApp = () => {
           setCurrentUser(user);
           setCurrentRole(user.role);
           setActiveTab(user.role === 'customer' ? 'menu' : user.role === 'vendor' ? 'orders' : 'dashboard');
-          setFormData({ email: '', password: '', name: '', role: 'customer' });
+          setFormData({ 
+            email: '', 
+            password: '', 
+            name: '', 
+            role: 'customer',
+            phone: '',
+            street: '',
+            city: '',
+            state: '',
+            zipCode: ''
+          });
           
           // Save authentication to localStorage for persistence
           localStorage.setItem('khanaLineupAuth', JSON.stringify({
@@ -400,6 +449,16 @@ const KhanaLineupApp = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-400 via-red-400 to-pink-500 flex items-center justify-center p-4">
         <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 sm:p-8 w-full max-w-md mx-auto">
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="inline-flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-all duration-300"
+              aria-label="Toggle dark or light mode"
+            >
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          </div>
           <div className="text-center mb-6 sm:mb-8">
             <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent mb-2">
               Khana Line-up
@@ -443,11 +502,29 @@ const KhanaLineupApp = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
                     errors.name ? 'border-red-500' : 'border-gray-300'
                   }`}
                 />
                 {errors.name && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.name}</p>}
+              </div>
+            )}
+
+            {isRegistering && (
+              <div>
+                <input
+                  id="registration-phone"
+                  name="phone"
+                  type="tel"
+                  placeholder="Mobile Number"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
+                    errors.phone ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                />
+                {errors.phone && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.phone}</p>}
               </div>
             )}
             
@@ -460,7 +537,7 @@ const KhanaLineupApp = () => {
                 value={formData.email}
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
                 onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
                   errors.email ? 'border-red-500' : 'border-gray-300'
                 }`}
               />
@@ -491,7 +568,7 @@ const KhanaLineupApp = () => {
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
                 onKeyDown={(e) => e.key === 'Enter' && (isRegistering ? handleRegister() : handleLogin())}
-                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 pr-10 sm:pr-12 ${
+                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 pr-10 sm:pr-12 text-gray-900 placeholder:text-gray-400 ${
                   errors.password ? 'border-red-500' : 'border-gray-300'
                 }`}
               />
@@ -512,7 +589,7 @@ const KhanaLineupApp = () => {
                   name="role"
                   value={formData.role}
                   onChange={(e) => setFormData({...formData, role: e.target.value})}
-                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent text-gray-900"
                 >
                   <option value="customer">Customer</option>
                   <option value="vendor">Vendor</option>
@@ -528,7 +605,7 @@ const KhanaLineupApp = () => {
                       value={formData.street}
                       onChange={(e) => setFormData({ ...formData, street: e.target.value })}
                       onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                      className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                      className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
                         errors.street ? 'border-red-500' : 'border-gray-300'
                       }`}
                     />
@@ -544,7 +621,7 @@ const KhanaLineupApp = () => {
                           value={formData.city}
                           onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                           onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                          className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                          className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
                             errors.city ? 'border-red-500' : 'border-gray-300'
                           }`}
                         />
@@ -559,7 +636,7 @@ const KhanaLineupApp = () => {
                           value={formData.state}
                           onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                           onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400"
                         />
                         <input
                           id="registration-zip"
@@ -569,7 +646,7 @@ const KhanaLineupApp = () => {
                           value={formData.zipCode}
                           onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
                           onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400"
                         />
                       </div>
                     </div>
@@ -658,6 +735,7 @@ const KhanaLineupApp = () => {
     setCurrentRole(null);
     setActiveTab('login');
     setCart([]);
+    setCustomerOrdersShowHistory(false);
     setShowProfileDropdown(false);
     
     // Clear authentication from localStorage
@@ -717,7 +795,7 @@ const KhanaLineupApp = () => {
     };
 
     return (
-      <nav className="bg-white shadow-xl sticky top-0 z-50 mobile-menu-container">
+      <nav className="bg-white dark:bg-slate-800 shadow-xl sticky top-0 z-50 mobile-menu-container">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center gap-3">
@@ -773,6 +851,16 @@ const KhanaLineupApp = () => {
                 className="md:hidden text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100 transition-all duration-300"
               >
                 <Menu size={24} />
+              </button>
+
+              {/* Theme Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="hidden sm:inline-flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-all duration-300"
+                aria-label="Toggle dark mode"
+              >
+                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
               </button>
 
               {/* Profile Dropdown */}
@@ -960,7 +1048,7 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredItems.map(item => (
-              <div key={item._id || item.id} className={`bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
+              <div key={item._id || item.id} className={`menu-card bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
                 <div className="bg-gradient-to-br from-orange-100 to-red-100 h-32 flex items-center justify-center">
                   <Package size={40} className="text-orange-500" />
                 </div>
@@ -1175,12 +1263,51 @@ const KhanaLineupApp = () => {
   };
 
   // Customer Orders View
-  const CustomerOrdersView = () => {
+  const CustomerOrdersView = ({ 
+    showHistory, 
+    setShowHistory,
+    historyFilterType,
+    setHistoryFilterType,
+    historyFilterDate,
+    setHistoryFilterDate,
+  }) => {
     const customerOrders = getOrdersByCustomer(currentUser.id);
-    const [showHistory, setShowHistory] = useState(false);
     
     const activeOrders = customerOrders.filter(order => order.status !== 'completed' && order.status !== 'cancelled');
     const completedOrders = customerOrders.filter(order => order.status === 'completed' || order.status === 'cancelled');
+
+    const filterCompletedOrders = (orders) => {
+      if (!showHistory) return orders;
+      if (historyFilterType === 'all') return orders;
+
+      const now = new Date();
+
+      if (historyFilterType === '7days' || historyFilterType === '30days' || historyFilterType === '90days') {
+        const fromDate = new Date();
+        const daysBack = historyFilterType === '7days' ? 7 : historyFilterType === '30days' ? 30 : 90;
+        fromDate.setDate(now.getDate() - daysBack);
+
+        return orders.filter(order => {
+          const orderDate = new Date(order.createdAt || order.timestamp);
+          return orderDate >= fromDate;
+        });
+      }
+
+      if (historyFilterType === 'date' && historyFilterDate) {
+        const selected = new Date(historyFilterDate);
+        if (Number.isNaN(selected.getTime())) return orders;
+
+        return orders.filter(order => {
+          const orderDate = new Date(order.createdAt || order.timestamp);
+          return orderDate.toDateString() === selected.toDateString();
+        });
+      }
+
+      return orders;
+    };
+
+    const filteredCompletedOrders = filterCompletedOrders(completedOrders);
+    const historyCount = historyFilterType === 'all' ? completedOrders.length : filteredCompletedOrders.length;
 
     const getStatusColor = (status) => {
       switch (status) {
@@ -1211,12 +1338,17 @@ const KhanaLineupApp = () => {
       }
     };
 
-    const ordersToShow = showHistory ? completedOrders : activeOrders;
+    const ordersToShow = showHistory ? filteredCompletedOrders : activeOrders;
 
     return (
       <div className="max-w-6xl mx-auto p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-          <h2 className="text-3xl font-bold text-gray-800">My Orders</h2>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-3">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-800">My Orders</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Viewing: <span className="font-semibold text-orange-600">{showHistory ? 'Order History' : 'Active Orders'}</span>
+            </p>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => refreshOrders()}
@@ -1228,24 +1360,54 @@ const KhanaLineupApp = () => {
               onClick={() => setShowHistory(false)}
               className={`px-4 py-2 rounded-xl transition-all duration-300 ${
                 !showHistory 
-                  ? 'bg-orange-500 text-white shadow-lg' 
+                  ? 'bg-orange-500 text-white shadow-lg border border-orange-600' 
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Active Orders
+              Active Orders ({activeOrders.length})
             </button>
             <button
               onClick={() => setShowHistory(true)}
               className={`px-4 py-2 rounded-xl transition-all duration-300 ${
                 showHistory 
-                  ? 'bg-orange-500 text-white shadow-lg' 
+                  ? 'bg-orange-500 text-white shadow-lg border border-orange-600' 
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Order History
+              Order History ({historyCount})
             </button>
           </div>
         </div>
+
+        {showHistory && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <Filter size={18} className="text-gray-500" />
+              <span className="text-sm text-gray-600">Filter history by:</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={historyFilterType}
+                onChange={(e) => setHistoryFilterType(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              >
+                <option value="all">All time</option>
+                <option value="7days">Last 7 days</option>
+                <option value="30days">Last 30 days</option>
+                <option value="90days">Last 90 days</option>
+                <option value="date">Specific date</option>
+              </select>
+              {historyFilterType === 'date' && (
+                <input
+                  type="date"
+                  value={historyFilterDate}
+                  onChange={(e) => setHistoryFilterDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                />
+              )}
+            </div>
+          </div>
+        )}
         
         {ordersToShow.length === 0 ? (
           <div className="text-center py-12">
@@ -1663,11 +1825,15 @@ const KhanaLineupApp = () => {
   const [vendorSearchTerm, setVendorSearchTerm] = useState('');
 
     const filteredMenuItems = menuItems.filter(item => {
+      // Normalize IDs
+      const itemId = item._id || item.id;
+      const vendorId = item.vendor?._id || item.vendorId || (typeof item.vendor === 'string' ? item.vendor : null);
+
       // Only show items belonging to current vendor
-      const belongsToVendor = item.vendor?._id === currentUser?.id || item.vendorId === currentUser?.id;
+      const belongsToVendor = vendorId === (currentUser?.id || currentUser?._id);
       if (!vendorSearchTerm) return belongsToVendor;
-      const matchesSearch = item.name.toLowerCase().includes(vendorSearchTerm.toLowerCase())
-        || item.category.toLowerCase().includes(vendorSearchTerm.toLowerCase());
+      const matchesSearch = item.name?.toLowerCase().includes(vendorSearchTerm.toLowerCase())
+        || item.category?.toLowerCase().includes(vendorSearchTerm.toLowerCase());
       return belongsToVendor && matchesSearch;
     });
 
@@ -1685,7 +1851,8 @@ const KhanaLineupApp = () => {
         
         try {
           await addMenuItem(item);
-          setNewItem({ name: '', price: '', category: '', available: true, description: '' });
+          // Do not clear the form fields automatically to avoid the "all fields empty" effect
+          // Vendor can now add multiple similar items without retyping everything.
           alert('Menu item added successfully!');
         } catch (error) {
           console.error('Error adding menu item:', error);
@@ -1697,14 +1864,21 @@ const KhanaLineupApp = () => {
     };
 
     const startEdit = (item) => {
-      setEditingItem(item.id);
+      const itemId = item._id || item.id;
+      setEditingItem(itemId);
       setEditData({ ...item });
     };
 
-    const saveEdit = () => {
-      updateMenuItem(editingItem, { ...editData, price: parseInt(editData.price) });
-      setEditingItem(null);
-      setEditData({});
+    const saveEdit = async () => {
+      if (!editingItem) return;
+      try {
+        await updateMenuItem(editingItem, { ...editData, price: parseInt(editData.price) });
+      } catch (error) {
+        console.error('Error saving menu item edit:', error);
+      } finally {
+        setEditingItem(null);
+        setEditData({});
+      }
     };
 
     const cancelEdit = () => {
@@ -1713,15 +1887,17 @@ const KhanaLineupApp = () => {
     };
 
     const deleteItem = (id) => {
+      const itemId = id._id || id.id || id;
       if (window.confirm('Are you sure you want to delete this item?')) {
-        deleteMenuItem(id);
+        deleteMenuItem(itemId);
       }
     };
 
     const toggleAvailability = (id) => {
-      const item = menuItems.find(item => item.id === id);
+      const itemId = id._id || id.id || id;
+      const item = menuItems.find(item => (item._id || item.id) === itemId);
       if (item) {
-        updateMenuItem(id, { ...item, available: !item.available });
+        updateMenuItem(itemId, { ...item, available: !item.available });
       }
     };
 
@@ -1804,13 +1980,15 @@ const KhanaLineupApp = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
-          {filteredMenuItems.map(item => (
-            <div key={item.id} className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}>
-              {editingItem === item.id ? (
+          {filteredMenuItems.map(item => {
+            const itemId = item._id || item.id;
+            return (
+            <div key={itemId} className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}>
+              {editingItem === itemId ? (
                 <div className="space-y-4">
                   <input
-                    id={`edit-item-name-${item.id}`}
-                    name={`editItemName-${item.id}`}
+                    id={`edit-item-name-${item._id || item.id}`}
+                    name={`editItemName-${item._id || item.id}`}
                     type="text"
                     value={editData.name || ''}
                     onChange={(e) => setEditData({ ...editData, name: e.target.value })}
@@ -1818,8 +1996,8 @@ const KhanaLineupApp = () => {
                     placeholder="Item name"
                   />
                   <input
-                    id={`edit-item-price-${item.id}`}
-                    name={`editItemPrice-${item.id}`}
+                    id={`edit-item-price-${item._id || item.id}`}
+                    name={`editItemPrice-${item._id || item.id}`}
                     type="number"
                     value={editData.price || ''}
                     onChange={(e) => setEditData({ ...editData, price: e.target.value })}
@@ -1827,8 +2005,8 @@ const KhanaLineupApp = () => {
                     placeholder="Price"
                   />
                   <select
-                    id={`edit-item-category-${item.id}`}
-                    name={`editItemCategory-${item.id}`}
+                    id={`edit-item-category-${item._id || item.id}`}
+                    name={`editItemCategory-${item._id || item.id}`}
                     value={editData.category || ''}
                     onChange={(e) => setEditData({ ...editData, category: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
@@ -1885,7 +2063,7 @@ const KhanaLineupApp = () => {
                       Edit
                     </button>
                     <button
-                      onClick={() => toggleAvailability(item.id)}
+                      onClick={() => toggleAvailability(item._id || item.id)}
                       className={`py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
                         item.available 
                           ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600' 
@@ -1895,7 +2073,7 @@ const KhanaLineupApp = () => {
                       {item.available ? 'Disable' : 'Enable'}
                     </button>
                     <button
-                      onClick={() => deleteItem(item.id)}
+                      onClick={() => deleteItem(item._id || item.id)}
                       className="col-span-2 bg-gradient-to-r from-red-500 to-pink-500 text-white py-2 rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
                     >
                       <Trash2 size={14} />
@@ -1905,7 +2083,8 @@ const KhanaLineupApp = () => {
                 </div>
               )}
             </div>
-          ))}
+          );
+        })}
         </div>
       </div>
     );
@@ -3315,8 +3494,18 @@ const KhanaLineupApp = () => {
       case 'cart':
         return <CartView />;
       case 'orders':
-        return currentRole === 'customer' ? <CustomerOrdersView /> : 
-               currentRole === 'vendor' ? <VendorOrdersView /> : <AdminOrderManagement />;
+        return currentRole === 'customer' 
+          ? <CustomerOrdersView 
+              showHistory={customerOrdersShowHistory} 
+              setShowHistory={setCustomerOrdersShowHistory} 
+              historyFilterType={customerOrdersHistoryFilterType}
+              setHistoryFilterType={setCustomerOrdersHistoryFilterType}
+              historyFilterDate={customerOrdersHistoryFilterDate}
+              setHistoryFilterDate={setCustomerOrdersHistoryFilterDate}
+            /> 
+          : currentRole === 'vendor' 
+            ? <VendorOrdersView /> 
+            : <AdminOrderManagement />;
       case 'menu-manage':
         return <MenuManageView />;
       case 'completed':
@@ -3354,7 +3543,10 @@ const KhanaLineupApp = () => {
     : Bell;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-orange-50">
+    <div className={isDarkMode
+      ? 'dark min-h-screen bg-slate-950 text-gray-100'
+      : 'min-h-screen bg-gradient-to-br from-gray-50 to-orange-50 text-gray-900'
+    }>
       <Navigation />
       
       {/* Notifications */}

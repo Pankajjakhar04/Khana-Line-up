@@ -22,7 +22,7 @@ const SearchField = ({ value, onChange, onSearch, placeholder = 'Search...' }) =
         placeholder={placeholder}
         value={value}
         onChange={handleChange}
-        className="pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent w-full max-w-xs"
+        className="pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent w-full max-w-xs text-black placeholder:text-gray-400"
       />
       <button
         onClick={() => onSearch && onSearch(value)}
