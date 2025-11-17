@@ -142,6 +142,8 @@ const KhanaLineupApp = () => {
     startDate: '',
     endDate: ''
   });
+  // Admin: selected vendor whose menu is being viewed/managed
+  const [adminSelectedVendor, setAdminSelectedVendor] = useState(null);
   
   // Profile dropdown state
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -2141,6 +2143,322 @@ const KhanaLineupApp = () => {
     );
   };
 
+  // Admin Vendor Menu Management (admin can view/edit a specific vendor's menu)
+  const AdminVendorMenuView = () => {
+    const isAllMode = !adminSelectedVendor;
+
+    const [editingItem, setEditingItem] = useState(null);
+    const [editData, setEditData] = useState({});
+    const [newItem, setNewItem] = useState({ name: '', price: '', category: '', available: true, description: '' });
+    const [searchInput, setSearchInput] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const vendorId = isAllMode ? null : (adminSelectedVendor.id || adminSelectedVendor._id);
+
+    const filteredMenuItems = menuItems.filter(item => {
+      const itemVendorId = item.vendor?._id || item.vendorId || (typeof item.vendor === 'string' ? item.vendor : null);
+      const belongsToVendor = isAllMode ? true : itemVendorId === vendorId;
+      if (!searchTerm) return belongsToVendor;
+      const matchesSearch = item.name?.toLowerCase().includes(searchTerm.toLowerCase())
+        || item.category?.toLowerCase().includes(searchTerm.toLowerCase());
+      return belongsToVendor && matchesSearch;
+    });
+
+    const addItem = async () => {
+      if (isAllMode) return; // safety: only add when a specific vendor is selected
+
+      if (newItem.name && newItem.price && newItem.category) {
+        const item = {
+          name: newItem.name,
+          price: parseInt(newItem.price, 10),
+          category: newItem.category,
+          description: newItem.description,
+          available: true,
+          vendor: vendorId,
+          stock: 10
+        };
+
+        try {
+          await addMenuItem(item);
+          alert('Menu item added successfully!');
+        } catch (error) {
+          console.error('Error adding menu item as admin:', error);
+          alert('Error adding menu item: ' + (error.message || 'Unknown error'));
+        }
+      } else {
+        alert('Please fill in all required fields (Name, Price, and Category)');
+      }
+    };
+
+    const startEdit = (item) => {
+      const itemId = item._id || item.id;
+      setEditingItem(itemId);
+      setEditData({ ...item });
+    };
+
+    const saveEdit = async () => {
+      if (!editingItem) return;
+      try {
+        await updateMenuItem(editingItem, { ...editData, price: parseInt(editData.price, 10) });
+      } catch (error) {
+        console.error('Error saving menu item edit as admin:', error);
+        alert('Error saving menu item: ' + (error.message || 'Unknown error'));
+      } finally {
+        setEditingItem(null);
+        setEditData({});
+      }
+    };
+
+    const cancelEdit = () => {
+      setEditingItem(null);
+      setEditData({});
+    };
+
+    const deleteItem = (id) => {
+      const itemId = id._id || id.id || id;
+      if (window.confirm('Are you sure you want to delete this item?')) {
+        deleteMenuItem(itemId).catch((error) => {
+          console.error('Error deleting menu item as admin:', error);
+          alert('Error deleting menu item. Please try again.');
+        });
+      }
+    };
+
+    const toggleAvailability = (id) => {
+      const itemId = id._id || id.id || id;
+      const item = menuItems.find(item => (item._id || item.id) === itemId);
+      if (item) {
+        updateMenuItem(itemId, { ...item, available: !item.available }).catch((error) => {
+          console.error('Error toggling availability as admin:', error);
+          alert('Error toggling availability. Please try again.');
+        });
+      }
+    };
+
+    return (
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-800">{isAllMode ? 'All Menu Items' : 'Manage Menu'}</h2>
+            {!isAllMode && (
+              <p className="text-sm text-gray-600 mt-1">
+                Vendor: {adminSelectedVendor.restaurantName || adminSelectedVendor.name}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-80">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <SearchField
+                value={searchInput}
+                onChange={setSearchInput}
+                onSearch={val => setSearchTerm(val.trim())}
+                placeholder="Search menu items..."
+              />
+            </div>
+            <button
+              onClick={() => {
+                setAdminSelectedVendor(null);
+                setActiveTab('dashboard');
+              }}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+
+        {!isAllMode && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+            <h3 className="text-xl font-semibold mb-4">Add New Item</h3>
+            <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+              <p className="text-sm text-gray-600">
+                Menu Items Status: {loading ? 'Loading...' : `${menuItems.length} items loaded`} | 
+                Filtered: {filteredMenuItems.length} items
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+              <input
+                id="admin-new-item-name"
+                name="itemName"
+                type="text"
+                placeholder="Item Name*"
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              />
+              <input
+                id="admin-new-item-price"
+                name="itemPrice"
+                type="number"
+                placeholder="Price*"
+                value={newItem.price}
+                onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              />
+              <select
+                id="admin-new-item-category"
+                name="itemCategory"
+                value={newItem.category}
+                onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              >
+                <option value="">Select Category*</option>
+                <option value="Main Course">Main Course</option>
+                <option value="Bread">Bread</option>
+                <option value="Rice">Rice</option>
+                <option value="Beverage">Beverage</option>
+                <option value="Dessert">Dessert</option>
+              </select>
+              <input
+                id="admin-new-item-description"
+                name="itemDescription"
+                type="text"
+                placeholder="Description"
+                value={newItem.description}
+                onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              />
+              <button
+                onClick={addItem}
+                className="bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 sm:py-3 text-sm sm:text-base rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 flex items-center justify-center gap-2 transform hover:scale-105 font-medium"
+              >
+                <Plus size={18} />
+                <span className="hidden sm:inline">Add Item</span>
+                <span className="sm:hidden">Add</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isAllMode && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+            <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+              <p className="text-sm text-gray-600">
+                Menu Items Status: {loading ? 'Loading...' : `${menuItems.length} items loaded`} | 
+                Filtered: {filteredMenuItems.length} items
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+          {filteredMenuItems.map(item => {
+            const itemId = item._id || item.id;
+            return (
+              <div key={itemId} className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}>
+                {editingItem === itemId ? (
+                  <div className="space-y-4">
+                    <input
+                      id={`admin-edit-item-name-${item._id || item.id}`}
+                      name={`adminEditItemName-${item._id || item.id}`}
+                      type="text"
+                      value={editData.name || ''}
+                      onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                      placeholder="Item name"
+                    />
+                    <input
+                      id={`admin-edit-item-price-${item._id || item.id}`}
+                      name={`adminEditItemPrice-${item._id || item.id}`}
+                      type="number"
+                      value={editData.price || ''}
+                      onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                      placeholder="Price"
+                    />
+                    <select
+                      id={`admin-edit-item-category-${item._id || item.id}`}
+                      name={`adminEditItemCategory-${item._id || item.id}`}
+                      value={editData.category || ''}
+                      onChange={(e) => setEditData({ ...editData, category: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    >
+                      <option value="Main Course">Main Course</option>
+                      <option value="Bread">Bread</option>
+                      <option value="Rice">Rice</option>
+                      <option value="Beverage">Beverage</option>
+                      <option value="Dessert">Dessert</option>
+                    </select>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEdit}
+                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 font-medium"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex-1">
+                        <h4 className="text-lg font-semibold mb-1">{item.name}</h4>
+                        <p className="text-gray-600 text-sm mb-1">{item.category}</p>
+                        {item.description && (
+                          <p className="text-xs text-gray-400 mb-2">{item.description}</p>
+                        )}
+                        <p className="text-2xl font-bold text-orange-600">₹{item.price}</p>
+                        {isAllMode && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Vendor: {item.vendor?.restaurantName || item.vendor?.name || 'Unknown'}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2 items-end">
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
+                          item.available
+                            ? 'bg-green-100 text-green-800 border-green-200'
+                            : 'bg-red-100 text-red-800 border-red-200'
+                        }`}>
+                          {item.available ? 'Available' : 'Unavailable'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => startEdit(item)}
+                        className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2 rounded-lg hover:from-blue-600 hover:to-indigo-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
+                      >
+                        <Edit size={14} />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => toggleAvailability(item._id || item.id)}
+                        className={`py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
+                          item.available
+                            ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
+                            : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
+                        }`}
+                      >
+                        {item.available ? 'Disable' : 'Enable'}
+                      </button>
+                      <button
+                        onClick={() => deleteItem(item._id || item.id)}
+                        className="col-span-2 bg-gradient-to-r from-red-500 to-pink-500 text-white py-2 rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
+                      >
+                        <Trash2 size={14} />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   // Simple Analytics View
   const VendorAnalyticsView = () => {
     const getFilteredOrders = () => {
@@ -2848,8 +3166,11 @@ const KhanaLineupApp = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {orders.map(order => (
-                  <tr key={order._id || order.id} className={`hover:bg-gray-50 transition-colors ${selectedOrders.includes(order._id || order.id) ? 'bg-blue-50' : ''}`}>
-                    <td className="py-4 px-6">
+                  <tr
+                    key={order._id || order.id}
+                    className={`group hover:bg-gray-50 transition-colors ${selectedOrders.includes(order._id || order.id) ? 'bg-blue-50' : ''}`}
+                  >
+                    <td className="py-4 px-6 group-hover:text-gray-900">
                       <input
                         type="checkbox"
                         checked={selectedOrders.includes(order._id || order.id)}
@@ -2857,15 +3178,15 @@ const KhanaLineupApp = () => {
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
-                    <td className="py-4 px-6 font-medium">#{order.tokenId}</td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-6 font-medium group-hover:text-gray-900">#{order.tokenId}</td>
+                    <td className="py-4 px-6 group-hover:text-gray-900">
                       {order.customer?.name || order.customerName || 'Unknown Customer'}
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-6 group-hover:text-gray-900">
                       {order.vendor?.name || order.vendorName || 'Unknown Vendor'}
                     </td>
-                    <td className="py-4 px-6">{order.items.length} items</td>
-                    <td className="py-4 px-6 font-semibold text-orange-600">₹{order.totalAmount}</td>
+                    <td className="py-4 px-6 group-hover:text-gray-900">{order.items.length} items</td>
+                    <td className="py-4 px-6 font-semibold text-orange-600 group-hover:text-orange-700">₹{order.totalAmount}</td>
                     <td className="py-4 px-6">
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                         order.status === 'completed' ? 'bg-green-100 text-green-800' :
@@ -2877,7 +3198,7 @@ const KhanaLineupApp = () => {
                         {order.status}
                       </span>
                     </td>
-                    <td className="py-4 px-6 text-sm text-gray-600">
+                    <td className="py-4 px-6 text-sm text-gray-600 group-hover:text-gray-900">
                       {(() => {
                         const date = order.createdAt || order.timestamps?.ordered || order.timestamp;
                         if (!date) return 'Unknown Date';
@@ -3017,6 +3338,17 @@ const KhanaLineupApp = () => {
                       <p className="text-xs text-gray-500 mt-1">
                         {menuItems.filter(item => item.vendor?._id === vendor.id || item.vendorId === vendor.id).length} items
                       </p>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <button
+                          onClick={() => {
+                            setAdminSelectedVendor(vendor);
+                            setActiveTab('admin-vendor-menu');
+                          }}
+                          className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-xs"
+                        >
+                          View menu
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -3046,7 +3378,13 @@ const KhanaLineupApp = () => {
                   <span className="text-orange-800 font-medium">Customers</span>
                   <span className="text-orange-600 font-bold">{Object.values(users).filter(u => u.role === 'customer').length}</span>
                 </div>
-                <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                <div
+                  className="flex justify-between items-center p-3 bg-purple-50 rounded-lg cursor-pointer hover:bg-purple-100 transition-colors"
+                  onClick={() => {
+                    setAdminSelectedVendor(null);
+                    setActiveTab('admin-vendor-menu');
+                  }}
+                >
                   <span className="text-purple-800 font-medium">Menu Items</span>
                   <span className="text-purple-600 font-bold">{menuItems.length}</span>
                 </div>
@@ -3244,9 +3582,9 @@ const KhanaLineupApp = () => {
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200">
                 {allUsers.map(user => (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={user.id} className="group hover:bg-gray-50 transition-colors">
                     {editingUser === user.id ? (
                       <>
                         <td className="py-4 px-6">
@@ -3312,9 +3650,9 @@ const KhanaLineupApp = () => {
                       </>
                     ) : (
                       <>
-                        <td className="py-4 px-6 font-medium">{user.name}</td>
-                        <td className="py-4 px-6">{user.email}</td>
-                        <td className="py-4 px-6">
+                        <td className="py-4 px-6 font-medium group-hover:text-gray-900">{user.name}</td>
+                        <td className="py-4 px-6 group-hover:text-gray-900">{user.email}</td>
+                        <td className="py-4 px-6 group-hover:text-gray-900">
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-sm">
                               {showPassword[user.id] ? user.password : '••••••••'}
@@ -3469,21 +3807,21 @@ const KhanaLineupApp = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {pendingVendors.map((vendor) => (
-                      <tr key={vendor._id} className="hover:bg-gray-50">
-                        <td className="py-4 px-6">
-                          <div className="font-medium text-gray-900">{vendor.name}</div>
+                      <tr key={vendor._id} className="group hover:bg-gray-50 transition-colors">
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="font-medium text-gray-900 group-hover:text-gray-900">{vendor.name}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="text-gray-600">{vendor.email}</div>
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="text-gray-600 group-hover:text-gray-900">{vendor.email}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="text-gray-600">{vendor.restaurantName || 'Not specified'}</div>
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="text-gray-600 group-hover:text-gray-900">{vendor.restaurantName || 'Not specified'}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="text-gray-600">{vendor.phone || 'Not provided'}</div>
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="text-gray-600 group-hover:text-gray-900">{vendor.phone || 'Not provided'}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="text-gray-600">
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="text-gray-600 group-hover:text-gray-900">
                             {new Date(vendor.createdAt).toLocaleDateString()}
                           </div>
                         </td>
@@ -3563,6 +3901,8 @@ const KhanaLineupApp = () => {
         return <CompletedOrdersView />;
       case 'analytics':
         return <VendorAnalyticsView />;
+      case 'admin-vendor-menu':
+        return <AdminVendorMenuView />;
       case 'dashboard':
         return <AdminDashboard />;
       case 'users':

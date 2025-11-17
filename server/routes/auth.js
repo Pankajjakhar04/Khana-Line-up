@@ -1,6 +1,6 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
-import { User } from '../models/index.js';
+import { User, MenuItem } from '../models/index.js';
 
 const router = express.Router();
 
@@ -359,27 +359,35 @@ router.put('/user/:id/password', async (req, res) => {
 });
 
 // @route   DELETE /api/auth/user/:id
-// @desc    Deactivate user account
+// @desc    Deactivate user account (and remove vendor menu items if applicable)
 // @access  Public (should be protected in production)
 router.delete('/user/:id', async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { isActive: false },
-      { new: true }
-    ).select('-password');
+    // First, find the user so we can determine if it's a vendor
+    const existingUser = await User.findById(req.params.id).select('-password');
 
-    if (!user) {
+    if (!existingUser) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
 
+    // If the user is a vendor, remove all of their menu items as well
+    let deletedMenuItemsCount = 0;
+    if (existingUser.role === 'vendor') {
+      const deleteResult = await MenuItem.deleteMany({ vendor: existingUser._id });
+      deletedMenuItemsCount = deleteResult.deletedCount || 0;
+    }
+
+    existingUser.isActive = false;
+    await existingUser.save();
+
     res.json({
       success: true,
       message: 'User account deactivated successfully',
-      user
+      user: existingUser,
+      deletedMenuItemsCount
     });
 
   } catch (error) {
@@ -539,7 +547,7 @@ router.put('/approve-vendor/:id', async (req, res) => {
 });
 
 // @route   DELETE /api/auth/reject-vendor/:id
-// @desc    Reject a vendor account (delete from database)
+// @desc    Reject a vendor account (delete from database and remove its menu items)
 // @access  Admin only
 router.delete('/reject-vendor/:id', async (req, res) => {
   try {
@@ -559,13 +567,18 @@ router.delete('/reject-vendor/:id', async (req, res) => {
       });
     }
 
+    // Delete all menu items belonging to this vendor
+    const deleteResult = await MenuItem.deleteMany({ vendor: vendor._id });
+    const deletedMenuItemsCount = deleteResult.deletedCount || 0;
+
     // Delete the vendor from database completely
     await User.findByIdAndDelete(req.params.id);
 
     res.json({
       success: true,
       message: 'Vendor rejected and removed from database',
-      deletedVendorId: req.params.id
+      deletedVendorId: req.params.id,
+      deletedMenuItemsCount
     });
 
   } catch (error) {
