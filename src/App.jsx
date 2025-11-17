@@ -1871,7 +1871,13 @@ const KhanaLineupApp = () => {
 
     const [editingItem, setEditingItem] = useState(null);
     const [editData, setEditData] = useState({});
-    const [newItem, setNewItem] = useState({ name: '', price: '', category: '', available: true, description: '' });
+    const [newItem, setNewItem] = useState({
+      name: '',
+      price: '',
+      category: '',
+      available: true,
+      description: ''
+    });
     const [localVendorSearchQuery, setLocalVendorSearchQuery] = useState('');
 
   const [vendorInput, setVendorInput] = useState('');
@@ -3896,7 +3902,16 @@ const KhanaLineupApp = () => {
             ? <VendorOrdersView /> 
             : <AdminOrderManagement />;
       case 'menu-manage':
-        return <MenuManageView />;
+        return (
+          <VendorMenuManageView
+            currentUser={currentUser}
+            menuItems={menuItems}
+            loading={loading}
+            addMenuItem={addMenuItem}
+            updateMenuItem={updateMenuItem}
+            deleteMenuItem={deleteMenuItem}
+          />
+        );
       case 'completed':
         return <CompletedOrdersView />;
       case 'analytics':
@@ -3961,6 +3976,318 @@ const KhanaLineupApp = () => {
       )}
       
       {renderContent()}
+    </div>
+  );
+};
+
+// Standalone Vendor menu management component so state does not reset on every parent re-render
+const VendorMenuManageView = ({
+  currentUser,
+  menuItems,
+  loading,
+  addMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
+}) => {
+  // Admin should not access menu management
+  if (currentUser?.role === 'admin') {
+    return (
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+          <h2 className="text-2xl font-bold text-yellow-800 mb-2">Access Restricted</h2>
+          <p className="text-yellow-700">
+            Admin users can only supervise. Menu management is restricted to vendors only.
+          </p>
+          <p className="text-sm text-yellow-600 mt-2">
+            Please use the Dashboard or Users section for administrative tasks.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const [editingItem, setEditingItem] = useState(null);
+  const [editData, setEditData] = useState({});
+  const [newItem, setNewItem] = useState({
+    name: '',
+    price: '',
+    category: '',
+    available: true,
+    description: ''
+  });
+  const [localVendorSearchQuery, setLocalVendorSearchQuery] = useState('');
+  const [vendorInput, setVendorInput] = useState('');
+  const [vendorSearchTerm, setVendorSearchTerm] = useState('');
+
+  const filteredMenuItems = menuItems.filter(item => {
+    const vendorId = item.vendor?._id || item.vendorId || (typeof item.vendor === 'string' ? item.vendor : null);
+    const belongsToVendor = vendorId === (currentUser?.id || currentUser?._id);
+    if (!vendorSearchTerm) return belongsToVendor;
+    const matchesSearch = item.name?.toLowerCase().includes(vendorSearchTerm.toLowerCase())
+      || item.category?.toLowerCase().includes(vendorSearchTerm.toLowerCase());
+    return belongsToVendor && matchesSearch;
+  });
+
+  const addItem = async () => {
+    if (newItem.name && newItem.price && newItem.category) {
+      const item = {
+        name: newItem.name,
+        price: parseInt(newItem.price),
+        category: newItem.category,
+        description: newItem.description,
+        available: true,
+        vendor: currentUser.id,
+        stock: 10,
+      };
+
+      try {
+        await addMenuItem(item);
+        // Clear the form fields after successful add
+        setNewItem({
+          name: '',
+          price: '',
+          category: '',
+          available: true,
+          description: ''
+        });
+        alert('Menu item added successfully!');
+      } catch (error) {
+        console.error('Error adding menu item:', error);
+        alert('Error adding menu item: ' + error.message);
+      }
+    } else {
+      alert('Please fill in all required fields (Name, Price, and Category)');
+    }
+  };
+
+  const startEdit = (item) => {
+    const itemId = item._id || item.id;
+    setEditingItem(itemId);
+    setEditData({ ...item });
+  };
+
+  const saveEdit = async () => {
+    if (!editingItem) return;
+    try {
+      await updateMenuItem(editingItem, { ...editData, price: parseInt(editData.price) });
+    } catch (error) {
+      console.error('Error saving menu item edit:', error);
+    } finally {
+      setEditingItem(null);
+      setEditData({});
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingItem(null);
+    setEditData({});
+  };
+
+  const deleteItemHandler = (id) => {
+    const itemId = id._id || id.id || id;
+    if (window.confirm('Are you sure you want to delete this item?')) {
+      deleteMenuItem(itemId);
+    }
+  };
+
+  const toggleAvailability = (id) => {
+    const itemId = id._id || id.id || id;
+    const item = menuItems.find(i => (i._id || i.id) === itemId);
+    if (item) {
+      updateMenuItem(itemId, { ...item, available: !item.available });
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <h2 className="text-3xl font-bold text-gray-800">Manage Menu</h2>
+
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <SearchField
+            value={vendorInput}
+            onChange={setVendorInput}
+            onSearch={val => setVendorSearchTerm(val.trim())}
+            placeholder="Search menu items..."
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+        <h3 className="text-xl font-semibold mb-4">Add New Item</h3>
+        <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+          <p className="text-sm text-gray-600">
+            Menu Items Status: {loading ? 'Loading...' : `${menuItems.length} items loaded`} |
+            Filtered: {filteredMenuItems.length} items |
+            Current User: {currentUser?.name || 'None'} ({currentUser?.id || 'No ID'})
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+          <input
+            id="new-item-name"
+            name="itemName"
+            type="text"
+            placeholder="Item Name*"
+            value={newItem.name}
+            onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+            className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+          />
+          <input
+            id="new-item-price"
+            name="itemPrice"
+            type="number"
+            placeholder="Price*"
+            value={newItem.price}
+            onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+            className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+          />
+          <select
+            id="new-item-category"
+            name="itemCategory"
+            value={newItem.category}
+            onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+            className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+          >
+            <option value="">Select Category*</option>
+            <option value="Main Course">Main Course</option>
+            <option value="Bread">Bread</option>
+            <option value="Rice">Rice</option>
+            <option value="Beverage">Beverage</option>
+            <option value="Dessert">Dessert</option>
+          </select>
+          <input
+            id="new-item-description"
+            name="itemDescription"
+            type="text"
+            placeholder="Description"
+            value={newItem.description}
+            onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+            className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+          />
+          <button
+            onClick={addItem}
+            className="bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 sm:py-3 text-sm sm:text-base rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 flex items-center justify-center gap-2 transform hover:scale-105 font-medium"
+          >
+            <Plus size={18} />
+            <span className="hidden sm:inline">Add Item</span>
+            <span className="sm:hidden">Add</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+        {filteredMenuItems.map(item => {
+          const itemId = item._id || item.id;
+          return (
+            <div
+              key={itemId}
+              className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}
+            >
+              {editingItem === itemId ? (
+                <div className="space-y-4">
+                  <input
+                    id={`edit-item-name-${item._id || item.id}`}
+                    name={`editItemName-${item._id || item.id}`}
+                    type="text"
+                    value={editData.name || ''}
+                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    placeholder="Item name"
+                  />
+                  <input
+                    id={`edit-item-price-${item._id || item.id}`}
+                    name={`editItemPrice-${item._id || item.id}`}
+                    type="number"
+                    value={editData.price || ''}
+                    onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    placeholder="Price"
+                  />
+                  <select
+                    id={`edit-item-category-${item._id || item.id}`}
+                    name={`editItemCategory-${item._id || item.id}`}
+                    value={editData.category || ''}
+                    onChange={(e) => setEditData({ ...editData, category: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="Main Course">Main Course</option>
+                    <option value="Bread">Bread</option>
+                    <option value="Rice">Rice</option>
+                    <option value="Beverage">Beverage</option>
+                    <option value="Dessert">Dessert</option>
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveEdit}
+                      className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 font-medium"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                      <h4 className="text-lg font-semibold mb-1">{item.name}</h4>
+                      <p className="text-gray-600 text-sm mb-1">{item.category}</p>
+                      {item.description && (
+                        <p className="text-xs text-gray-400 mb-2">{item.description}</p>
+                      )}
+                      <p className="text-2xl font-bold text-orange-600">₹{item.price}</p>
+                    </div>
+                    <div className="flex flex-col gap-2 items-end">
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-medium border ${
+                          item.available
+                            ? 'bg-green-100 text-green-800 border-green-200'
+                            : 'bg-red-100 text-red-800 border-red-200'
+                        }`}
+                      >
+                        {item.available ? 'Available' : 'Unavailable'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => startEdit(item)}
+                      className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2 rounded-lg hover:from-blue-600 hover:to-indigo-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
+                    >
+                      <Edit size={14} />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => toggleAvailability(item._id || item.id)}
+                      className={`py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
+                        item.available
+                          ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
+                          : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
+                      }`}
+                    >
+                      {item.available ? 'Disable' : 'Enable'}
+                    </button>
+                    <button
+                      onClick={() => deleteItemHandler(item._id || item.id)}
+                      className="col-span-2 bg-gradient-to-r from-red-500 to-pink-500 text-white py-2 rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
