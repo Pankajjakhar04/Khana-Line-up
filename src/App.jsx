@@ -1137,9 +1137,27 @@ const KhanaLineupApp = () => {
     const placeOrder = async () => {
       if (cart.length === 0) return;
 
+      if (!currentUser || !currentUser.id) {
+        console.error('Cannot place order: missing currentUser or user id', currentUser);
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message: 'Unable to place order. Please log in again and try once more.',
+            type: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
+
       // Group cart items by vendor since backend expects one vendor per order
       const itemsByVendor = cart.reduce((acc, item) => {
-        const vendorId = item.vendor?._id || item.vendorId;
+        const vendorId =
+          item.vendor?._id ||
+          item.vendorId ||
+          (typeof item.vendor === 'string' ? item.vendor : null);
+
         if (!vendorId) {
           console.error('Item missing vendor information:', item);
           return acc;
@@ -1161,9 +1179,24 @@ const KhanaLineupApp = () => {
         return acc;
       }, {});
 
+      const vendorIds = Object.keys(itemsByVendor);
+      if (vendorIds.length === 0) {
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message: 'Unable to place order. Menu items are missing vendor information. Please refresh and try again.',
+            type: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
+
       try {
         // Create separate orders for each vendor
-        const orderPromises = Object.entries(itemsByVendor).map(async ([vendorId, data]) => {
+        const orderPromises = vendorIds.map(async (vendorId) => {
+          const data = itemsByVendor[vendorId];
           const newOrder = {
             customer: currentUser.id,
             vendor: vendorId,
@@ -1192,12 +1225,27 @@ const KhanaLineupApp = () => {
 
       } catch (error) {
         console.error('Error placing order:', error);
-        setNotifications(prev => [...prev, {
-          id: Date.now(),
-          message: 'Failed to place order. Please try again.',
-          type: 'error',
-          timestamp: new Date().toISOString()
-        }]);
+
+        // Show a more helpful message based on backend error
+        let message = error?.data?.message || error?.message || 'Failed to place order. Please try again.';
+        if (
+          error?.errorType === 'MULTI_VENDOR_NOT_ALLOWED' ||
+          error?.data?.errorType === 'MULTI_VENDOR_NOT_ALLOWED'
+        ) {
+          message =
+            error?.data?.message ||
+            'You can only place an order with items from one vendor at a time. Please clear your cart and add items from a single vendor.';
+        }
+
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message,
+            type: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
       }
     };
 

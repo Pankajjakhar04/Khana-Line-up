@@ -530,12 +530,9 @@ export const useOrders = (currentUser, currentRole) => {
     } catch (error) {
       console.error('Error creating order via API:', error);
 
-      // Preserve specific backend errors like multi-vendor validation
-      if (error?.errorType === 'MULTI_VENDOR_NOT_ALLOWED' || error?.data?.errorType === 'MULTI_VENDOR_NOT_ALLOWED') {
-        throw error;
-      }
-
-      throw new Error('Failed to create order. Please check server connection.');
+      // Always propagate the original error so the UI can show the real message
+      // (including validation messages like stock issues, multi-vendor, etc.)
+      throw error;
     }
   };
 

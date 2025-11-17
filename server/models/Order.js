@@ -163,23 +163,45 @@ orderSchema.virtual('orderAge').get(function() {
 
 // Pre-save middleware to calculate subtotals and total
 orderSchema.pre('save', function(next) {
-  // Calculate subtotals for items
-  this.items.forEach(item => {
-    item.subtotal = item.price * item.quantity;
-  });
-  
-  // Calculate total amount
-  const itemsTotal = this.items.reduce((sum, item) => sum + item.subtotal, 0);
-  const discountAmount = this.discounts.reduce((sum, discount) => {
-    if (discount.percentage) {
-      return sum + (itemsTotal * discount.percentage / 100);
+  try {
+    if (!Array.isArray(this.items) || this.items.length === 0) {
+      return next();
     }
-    return sum + discount.amount;
-  }, 0);
-  
-  this.totalAmount = itemsTotal - discountAmount + this.delivery.fee + this.tax.total;
-  
-  next();
+
+    // 1) Ensure each item has a subtotal
+    this.items.forEach((item) => {
+      if (item && typeof item.price === 'number' && typeof item.quantity === 'number') {
+        item.subtotal = item.price * item.quantity;
+      }
+    });
+
+    // 2) Only recompute totalAmount if it isn't already set
+    if (typeof this.totalAmount !== 'number') {
+      const itemsTotal = this.items.reduce(
+        (sum, item) => sum + (typeof item.subtotal === 'number' ? item.subtotal : 0),
+        0,
+      );
+
+      const discounts = Array.isArray(this.discounts) ? this.discounts : [];
+      const discountAmount = discounts.reduce((sum, discount) => {
+        const percentage = discount?.percentage || 0;
+        const amount = discount?.amount || 0;
+        if (percentage) {
+          return sum + (itemsTotal * percentage) / 100;
+        }
+        return sum + amount;
+      }, 0);
+
+      const deliveryFee = this.delivery?.fee || 0;
+      const taxTotal = this.tax?.total || 0;
+
+      this.totalAmount = itemsTotal - discountAmount + deliveryFee + taxTotal;
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Method to update order status
