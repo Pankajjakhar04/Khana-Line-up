@@ -7,6 +7,11 @@ dotenv.config();
 
 const cleanupMenuItems = async () => {
   try {
+    if (process.env.CONFIRM_MENU_CLEANUP !== 'YES_I_WANT_TO_DELETE_ALL_MENU_ITEMS') {
+      console.error('Refusing to delete menu items: set CONFIRM_MENU_CLEANUP=YES_I_WANT_TO_DELETE_ALL_MENU_ITEMS to run intentionally.');
+      process.exit(1);
+    }
+
     console.log('Connecting to MongoDB...');
     await connectDB();
     

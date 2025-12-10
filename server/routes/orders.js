@@ -97,13 +97,16 @@ router.get('/:id', async (req, res) => {
 // @access  Public (should be protected in production)
 router.post('/', async (req, res) => {
   try {
-    const { customer, vendor, items, notes, delivery } = req.body;
+    const { customer, vendor, items, notes, delivery, source, walkInCustomer } = req.body;
+
+    const orderSource = source === 'walk-in' ? 'walk-in' : 'online';
+    const isWalkIn = orderSource === 'walk-in';
     
     // Validation
-    if (!customer || !vendor || !items || items.length === 0) {
+    if (!vendor || !items || items.length === 0 || (!isWalkIn && !customer)) {
       return res.status(400).json({
         success: false,
-        message: 'Customer, vendor, and items are required'
+        message: 'Vendor and items are required. Customer is required for online orders.'
       });
     }
 
@@ -162,12 +165,23 @@ router.post('/', async (req, res) => {
     // Create order
     const orderData = {
       tokenId,
-      customer,
       vendor,
+      source: orderSource,
       items: orderItems,
       totalAmount: orderItems.reduce((sum, item) => sum + item.subtotal, 0),
       status: 'ordered'
     };
+
+    if (!isWalkIn) {
+      orderData.customer = customer;
+    }
+
+    if (isWalkIn && (walkInCustomer?.name || walkInCustomer?.phone)) {
+      orderData.walkInCustomer = {
+        name: walkInCustomer.name || '',
+        phone: walkInCustomer.phone || ''
+      };
+    }
 
     if (notes) {
       orderData.notes = { customer: notes };

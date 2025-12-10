@@ -7,15 +7,28 @@ const orderSchema = new mongoose.Schema({
     // Use a non-unique index; tokens reset each day so they are not globally unique
     index: true
   },
+  source: {
+    type: String,
+    enum: ['online', 'walk-in'],
+    default: 'online',
+    index: true
+  },
   customer: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    // Walk-in orders can omit a registered customer
+    required() {
+      return this.source !== 'walk-in';
+    }
   },
   vendor: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
+  },
+  walkInCustomer: {
+    name: String,
+    phone: String
   },
   items: [{
     menuItem: {
