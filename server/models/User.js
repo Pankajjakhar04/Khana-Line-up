@@ -143,12 +143,12 @@ userSchema.statics.findByEmail = function(email) {
 userSchema.statics.createDefaultUsers = async function() {
   // Only create admin user - no other default users
   const adminData = {
-    email: 'admin@khana-lineup.com',
-    password: 'admin_2026',
-    name: 'Admin User',
-    role: 'admin',
-    phone: '1234567890',
-    isActive: true
+      email: process.env.ADMIN_EMAIL,
+      password: process.env.ADMIN_PASSWORD,
+      name: process.env.ADMIN_NAME,
+      role: 'admin',
+      phone: process.env.ADMIN_PHONE,
+      isActive: true
   };
 
   const existingAdmin = await this.findByEmail(adminData.email);
