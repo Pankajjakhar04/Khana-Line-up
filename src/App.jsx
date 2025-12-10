@@ -774,6 +774,91 @@ const KhanaLineupApp = () => {
     }
   };
 
+  // Utility: open a printable receipt for a given order
+  const printOrderReceipt = (order) => {
+    if (!order) return;
+
+    try {
+      const printWindow = window.open('', '_blank', 'width=600,height=800');
+      if (!printWindow) {
+        alert('Please allow pop-ups in your browser to print or download the receipt.');
+        return;
+      }
+
+      const createdAt = new Date(order.createdAt || order.timestamp).toLocaleString();
+      const vendorName =
+        order.vendor?.restaurantName ||
+        order.vendor?.name ||
+        order.vendorName ||
+        order.items?.[0]?.vendor?.restaurantName ||
+        order.items?.[0]?.vendor?.name ||
+        (currentRole === 'vendor' ? (currentUser?.restaurantName || currentUser?.name) : null) ||
+        'Vendor';
+      const customerName =
+        order.walkInCustomer?.name ||
+        order.customer?.name ||
+        order.customerName ||
+        'Walk-in Customer';
+      const sourceLabel = order.source === 'walk-in' ? 'Walk-in (Offline)' : 'Online';
+
+      const itemsHtml = (order.items || [])
+        .map(item => `
+          <tr>
+            <td>${item.name} x ${item.quantity}</td>
+            <td style="text-align:right;">₹${item.price * item.quantity}</td>
+          </tr>
+        `)
+        .join('');
+
+      printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Order Receipt - Token #${order.tokenId}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 16px; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    h2 { font-size: 16px; margin: 16px 0 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 4px 0; font-size: 13px; }
+    tfoot td { font-weight: bold; border-top: 1px solid #ccc; padding-top: 8px; }
+    .meta { font-size: 12px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Khana Line-up</h1>
+  <div class="meta"><strong>Token #${order.tokenId}</strong></div>
+  <div class="meta">Order type: ${sourceLabel}</div>
+  <div class="meta">Vendor: ${vendorName}</div>
+  <div class="meta">Customer: ${customerName}</div>
+  <div class="meta">Created at: ${createdAt}</div>
+
+  <h2>Items</h2>
+  <table>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td>Total</td>
+        <td style="text-align:right;">₹${order.totalAmount}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <p class="meta" style="margin-top:16px;">Thank you!</p>
+</body>
+</html>`);
+
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } catch (error) {
+      console.error('Error printing receipt:', error);
+      alert('Failed to open print dialog. Please try again.');
+    }
+  };
+
   // Navigation Component
   const Navigation = () => {
     const navItems = {
@@ -784,6 +869,7 @@ const KhanaLineupApp = () => {
       ],
       vendor: [
         { id: 'orders', label: 'Order Queue', icon: Clock },
+        { id: 'walk-in', label: 'Walk-in Orders', icon: History },
         { id: 'menu-manage', label: 'Manage Menu', icon: Edit },
         { id: 'completed', label: 'Completed', icon: CheckCircle },
         { id: 'analytics', label: 'Analytics', icon: BarChart3 }
@@ -1738,7 +1824,7 @@ const KhanaLineupApp = () => {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-orange-600">Token #{order.tokenId}</h3>
-                    <p className="text-gray-600 font-medium">{order.customer?.name || order.customerName || 'Unknown Customer'}</p>
+                    <p className="text-gray-600 font-medium">{order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}</p>
                     <p className="text-sm text-gray-500">{new Date(order.createdAt || order.timestamp).toLocaleString()}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
@@ -1807,31 +1893,41 @@ const KhanaLineupApp = () => {
                     </div>
                   </div>
                   
-                  <div className="flex gap-2">
-                    {order.status === 'ordered' && (
-                      <button
-                        onClick={() => handleOrderStatusUpdate(order._id || order.id, 'preparing')}
-                        className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white py-2 rounded-lg hover:from-yellow-600 hover:to-orange-600 transition-all duration-300 transform hover:scale-105 font-medium"
-                      >
-                        Start Preparing
-                      </button>
-                    )}
-                    {order.status === 'preparing' && (
-                      <button
-                        onClick={() => handleOrderStatusUpdate(order._id || order.id, 'ready')}
-                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all duration-300 transform hover:scale-105 font-medium"
-                      >
-                        Mark Ready
-                      </button>
-                    )}
-                    {order.status === 'ready' && (
-                      <button
-                        onClick={() => handleOrderStatusUpdate(order._id || order.id, 'completed')}
-                        className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-300 transform hover:scale-105 font-medium"
-                      >
-                        Complete Order
-                      </button>
-                    )}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      {order.status === 'ordered' && (
+                        <button
+                          onClick={() => handleOrderStatusUpdate(order._id || order.id, 'preparing')}
+                          className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white py-2 rounded-lg hover:from-yellow-600 hover:to-orange-600 transition-all duration-300 transform hover:scale-105 font-medium"
+                        >
+                          Start Preparing
+                        </button>
+                      )}
+                      {order.status === 'preparing' && (
+                        <button
+                          onClick={() => handleOrderStatusUpdate(order._id || order.id, 'ready')}
+                          className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all duration-300 transform hover:scale-105 font-medium"
+                        >
+                          Mark Ready
+                        </button>
+                      )}
+                      {order.status === 'ready' && (
+                        <button
+                          onClick={() => handleOrderStatusUpdate(order._id || order.id, 'completed')}
+                          className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-300 transform hover:scale-105 font-medium"
+                        >
+                          Complete Order
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Print / download receipt for this order */}
+                    <button
+                      onClick={() => printOrderReceipt(order)}
+                      className="w-full bg-white text-orange-600 border border-orange-300 py-2 rounded-lg hover:bg-orange-50 transition-all duration-300 font-medium"
+                    >
+                      Print / Download Receipt
+                    </button>
                   </div>
                   
                   {/* Cancel button - always available for non-completed orders */}
@@ -1846,6 +1942,230 @@ const KhanaLineupApp = () => {
             ))}
           </div>
         )}
+      </div>
+    );
+  };
+
+  // Vendor Walk-in Orders View (offline orders created by vendor)
+  const VendorWalkInView = () => {
+    const [walkInCart, setWalkInCart] = useState([]);
+    const [walkInName, setWalkInName] = useState('');
+    const [walkInPhone, setWalkInPhone] = useState('');
+
+    const vendorId = currentUser?.id || currentUser?._id;
+
+    // Only this vendor's menu items
+    const vendorMenuItems = menuItems.filter(item => {
+      const itemVendorId =
+        item.vendor?._id ||
+        item.vendorId ||
+        (typeof item.vendor === 'string' ? item.vendor : null);
+      return itemVendorId === vendorId;
+    });
+
+    const addToWalkInCart = (item) => {
+      const id = item._id || item.id;
+      const existing = walkInCart.find(ci => ci.id === id);
+      if (existing) {
+        setWalkInCart(walkInCart.map(ci =>
+          ci.id === id ? { ...ci, quantity: ci.quantity + 1 } : ci
+        ));
+      } else {
+        setWalkInCart([
+          ...walkInCart,
+          {
+            id,
+            menuItem: id,
+            name: item.name,
+            price: item.price,
+            quantity: 1,
+          },
+        ]);
+      }
+    };
+
+    const updateWalkInQuantity = (id, qty) => {
+      if (qty <= 0) {
+        setWalkInCart(walkInCart.filter(ci => ci.id !== id));
+      } else {
+        setWalkInCart(walkInCart.map(ci =>
+          ci.id === id ? { ...ci, quantity: qty } : ci
+        ));
+      }
+    };
+
+    const walkInTotal = walkInCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const placeWalkInOrder = async () => {
+      if (!vendorId || walkInCart.length === 0) return;
+
+      try {
+        const orderPayload = {
+          vendor: vendorId,
+          source: 'walk-in',
+          items: walkInCart.map(item => ({
+            menuItem: item.menuItem,
+            quantity: item.quantity,
+          })),
+        };
+
+        if (walkInName || walkInPhone) {
+          orderPayload.walkInCustomer = {
+            name: walkInName,
+            phone: walkInPhone,
+          };
+        }
+
+        const created = await addOrder(orderPayload);
+        setWalkInCart([]);
+        setWalkInName('');
+        setWalkInPhone('');
+
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message: `Walk-in order placed - Token #${created.tokenId}`,
+            type: 'success',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } catch (error) {
+        console.error('Error placing walk-in order:', error);
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message: error?.message || 'Failed to place walk-in order. Please try again.',
+            type: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+    };
+
+    return (
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Left: menu items */}
+          <div className="flex-1">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-800">Walk-in Orders</h2>
+                <p className="text-sm text-gray-500">Create offline orders using your live menu</p>
+              </div>
+            </div>
+
+            {vendorMenuItems.length === 0 ? (
+              <div className="text-center py-12">
+                <Package size={64} className="mx-auto text-gray-400 mb-4" />
+                <p className="text-gray-600 text-lg">No menu items found for this vendor.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {vendorMenuItems.map(item => (
+                  <div
+                    key={item._id || item.id}
+                    className="glass rounded-2xl shadow-lg p-4 flex flex-col justify-between"
+                  >
+                    <div>
+                      <h4 className="text-lg font-semibold mb-1">{item.name}</h4>
+                      <p className="text-sm text-gray-500 mb-1">{item.category}</p>
+                      <p className="text-xl font-bold text-orange-600">₹{item.price}</p>
+                    </div>
+                    <button
+                      onClick={() => addToWalkInCart(item)}
+                      disabled={!item.available}
+                      className={`mt-3 w-full py-2 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 ${
+                        item.available
+                          ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <Plus size={18} />
+                      {item.available ? 'Add to Walk-in Cart' : 'Unavailable'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right: walk-in cart */}
+          <div className="w-full lg:w-96 bg-white rounded-2xl shadow-lg p-5 h-fit">
+            <h3 className="text-xl font-semibold mb-3">Walk-in Cart</h3>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Customer Name (optional)</label>
+                <input
+                  type="text"
+                  value={walkInName}
+                  onChange={(e) => setWalkInName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                  placeholder="Walk-in customer name"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Customer Phone (optional)</label>
+                <input
+                  type="tel"
+                  value={walkInPhone}
+                  onChange={(e) => setWalkInPhone(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                  placeholder="Phone number"
+                />
+              </div>
+            </div>
+
+            {walkInCart.length === 0 ? (
+              <p className="text-sm text-gray-500 mb-4">No items in walk-in cart.</p>
+            ) : (
+              <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
+                {walkInCart.map(item => (
+                  <div key={item.id} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{item.name}</p>
+                      <p className="text-xs text-gray-500">₹{item.price} each</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => updateWalkInQuantity(item.id, item.quantity - 1)}
+                        className="w-7 h-7 flex items-center justify-center bg-gray-100 rounded-lg"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="text-sm font-semibold w-6 text-center">{item.quantity}</span>
+                      <button
+                        onClick={() => updateWalkInQuantity(item.id, item.quantity + 1)}
+                        className="w-7 h-7 flex items-center justify-center bg-gray-100 rounded-lg"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t pt-3 mt-3 flex items-center justify-between">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="text-lg font-bold text-orange-600">₹{walkInTotal}</span>
+            </div>
+
+            <button
+              onClick={placeWalkInOrder}
+              disabled={walkInCart.length === 0}
+              className={`mt-4 w-full py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                walkInCart.length === 0
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transform hover:scale-105'
+              }`}
+            >
+              Create Walk-in Order
+            </button>
+          </div>
+        </div>
       </div>
     );
   };
@@ -2520,6 +2840,12 @@ const KhanaLineupApp = () => {
     const totalOrders = completedOrders.length;
     const totalCancelled = cancelledOrders.length;
 
+    // Split analytics by source (online vs walk-in)
+    const onlineCompletedOrders = completedOrders.filter(order => order.source !== 'walk-in');
+    const walkInCompletedOrders = completedOrders.filter(order => order.source === 'walk-in');
+    const onlineSales = onlineCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const walkInSales = walkInCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
     const itemCounts = {};
     completedOrders.forEach(order => {
       order.items.forEach(item => {
@@ -2556,6 +2882,9 @@ const KhanaLineupApp = () => {
               <div>
                 <p className="text-blue-100 text-sm">Total Sales</p>
                 <p className="text-3xl font-bold">₹{totalSales}</p>
+                <p className="text-xs text-blue-100 mt-1">
+                  Online: ₹{onlineSales} · Walk-in: ₹{walkInSales}
+                </p>
               </div>
               <TrendingUp size={32} className="text-blue-300" />
             </div>
@@ -2566,6 +2895,9 @@ const KhanaLineupApp = () => {
               <div>
                 <p className="text-green-100 text-sm">Completed Orders</p>
                 <p className="text-3xl font-bold">{totalOrders}</p>
+                <p className="text-xs text-green-100 mt-1">
+                  Online: {onlineCompletedOrders.length} · Walk-in: {walkInCompletedOrders.length}
+                </p>
               </div>
               <Package size={32} className="text-green-300" />
             </div>
@@ -2632,7 +2964,7 @@ const KhanaLineupApp = () => {
                       </span>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium">{order.customer?.name || order.customerName || 'Unknown Customer'}</p>
+                          <p className="font-medium">{order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}</p>
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                             order.status === 'completed' 
                               ? 'bg-green-100 text-green-800' 
@@ -2806,7 +3138,10 @@ const KhanaLineupApp = () => {
                   <div>
                     <h3 className="text-xl font-bold text-gray-600">Token #{order.tokenId}</h3>
                     <p className="text-gray-600 font-medium">
-                      {order.customer?.name || order.customerName || 'Unknown Customer'}
+                      {order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Type: {order.source === 'walk-in' ? 'Walk-in (Offline)' : 'Online'}
                     </p>
                     <p className="text-sm text-gray-500">
                       Completed: {formatDate(order.timestamps?.completed || order.completedAt || order.updatedAt)}
@@ -2815,7 +3150,7 @@ const KhanaLineupApp = () => {
                       Ordered: {formatDate(order.createdAt || order.timestamp)}
                     </p>
                   </div>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 items-end">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
                       order.status === 'completed' 
                         ? 'bg-green-100 text-green-800 border-green-200' 
@@ -2828,6 +3163,12 @@ const KhanaLineupApp = () => {
                         Cancelled by customer
                       </span>
                     )}
+                    <button
+                      onClick={() => printOrderReceipt(order)}
+                      className="px-3 py-1 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      Print / Download
+                    </button>
                     <button
                       onClick={() => handleOrderDelete(order._id || order.id)}
                       className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
@@ -3186,7 +3527,7 @@ const KhanaLineupApp = () => {
                     </td>
                     <td className="py-4 px-6 font-medium group-hover:text-gray-900">#{order.tokenId}</td>
                     <td className="py-4 px-6 group-hover:text-gray-900">
-                      {order.customer?.name || order.customerName || 'Unknown Customer'}
+                      {order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}
                     </td>
                     <td className="py-4 px-6 group-hover:text-gray-900">
                       {order.vendor?.name || order.vendorName || 'Unknown Vendor'}
@@ -3255,6 +3596,137 @@ const KhanaLineupApp = () => {
     const totalRevenue = orders.filter(order => order.status === 'completed')
       .reduce((sum, order) => sum + order.totalAmount, 0);
 
+    const onlineCompletedOrders = orders.filter(order => order.status === 'completed' && order.source !== 'walk-in');
+    const walkInCompletedOrders = orders.filter(order => order.status === 'completed' && order.source === 'walk-in');
+    const onlineRevenue = onlineCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const walkInRevenue = walkInCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
+    const [vendorSearchInput, setVendorSearchInput] = useState('');
+    const [vendorSearchTerm, setVendorSearchTerm] = useState('');
+    const [showAdminAnalytics, setShowAdminAnalytics] = useState(true);
+    const [analyticsVendorId, setAnalyticsVendorId] = useState('all');
+
+    const vendorList = Object.values(users).filter(user => user.role === 'vendor');
+    const filteredVendors = vendorList.filter(vendor => {
+      if (!vendorSearchTerm) return true;
+      const query = vendorSearchTerm.toLowerCase();
+      return (
+        (vendor.restaurantName || '').toLowerCase().includes(query) ||
+        (vendor.name || '').toLowerCase().includes(query) ||
+        (vendor.email || '').toLowerCase().includes(query) ||
+        (vendor.phone || '').toLowerCase().includes(query)
+      );
+    });
+
+    const completedOrdersForRevenue = orders.filter(order => order.status === 'completed');
+    const vendorRevenueMap = {};
+
+    completedOrdersForRevenue.forEach(order => {
+      let vendorId = null;
+      let vendorName = 'Unknown Vendor';
+
+      if (order.vendor) {
+        if (typeof order.vendor === 'object') {
+          vendorId = order.vendor._id || order.vendor.id;
+          vendorName =
+            order.vendor.restaurantName ||
+            order.vendor.name ||
+            vendorName;
+        } else {
+          vendorId = order.vendor;
+        }
+      }
+
+      if (!vendorName || vendorName === 'Unknown Vendor') {
+        vendorName = order.vendorName || 'Unknown Vendor';
+      }
+
+      if (!vendorId) {
+        vendorId = vendorName;
+      }
+
+      if (!vendorRevenueMap[vendorId]) {
+        vendorRevenueMap[vendorId] = {
+          vendorId,
+          vendorName,
+          orderCount: 0,
+          revenue: 0,
+        };
+      }
+
+      vendorRevenueMap[vendorId].orderCount += 1;
+      vendorRevenueMap[vendorId].revenue += order.totalAmount || 0;
+    });
+
+    const vendorRevenueList = Object.values(vendorRevenueMap).sort((a, b) => b.revenue - a.revenue);
+
+    const getRevenueFilteredOrders = () => {
+      const now = new Date();
+      const filterDate = new Date();
+
+      switch (orderFilter) {
+        case '7days':
+          filterDate.setDate(now.getDate() - 7);
+          break;
+        case '1month':
+          filterDate.setMonth(now.getMonth() - 1);
+          break;
+        case '3months':
+          filterDate.setMonth(now.getMonth() - 3);
+          break;
+        default:
+          filterDate.setDate(now.getDate() - 7);
+      }
+
+      return orders.filter(order => {
+        const orderDate = new Date(order.createdAt || order.timestamp);
+
+        // Optional vendor filter for analytics panel
+        if (analyticsVendorId && analyticsVendorId !== 'all') {
+          let orderVendorId = null;
+          if (order.vendor) {
+            if (typeof order.vendor === 'object') {
+              orderVendorId = order.vendor._id || order.vendor.id;
+            } else {
+              orderVendorId = order.vendor;
+            }
+          }
+
+          if (orderVendorId !== analyticsVendorId) return false;
+        }
+
+        return orderDate >= filterDate;
+      });
+    };
+
+    const revenueFilteredOrders = getRevenueFilteredOrders();
+    const revenueCompletedOrders = revenueFilteredOrders.filter(order => order.status === 'completed');
+    const revenueCancelledOrders = revenueFilteredOrders.filter(order => order.status === 'cancelled');
+    const revenueCompletedAndCancelledOrders = revenueFilteredOrders.filter(order =>
+      order.status === 'completed' || order.status === 'cancelled'
+    );
+
+    const revenueTotalSales = revenueCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const revenueTotalOrders = revenueCompletedOrders.length;
+    const revenueTotalCancelled = revenueCancelledOrders.length;
+
+    const revenueOnlineCompletedOrders = revenueCompletedOrders.filter(order => order.source !== 'walk-in');
+    const revenueWalkInCompletedOrders = revenueCompletedOrders.filter(order => order.source === 'walk-in');
+    const revenueOnlineSales = revenueOnlineCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const revenueWalkInSales = revenueWalkInCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
+    const revenueItemCounts = {};
+    revenueCompletedOrders.forEach(order => {
+      (order.items || []).forEach(item => {
+        if (!item || !item.name) return;
+        revenueItemCounts[item.name] = (revenueItemCounts[item.name] || 0) + (item.quantity || 0);
+      });
+    });
+
+    const revenueSortedItems = Object.entries(revenueItemCounts).sort((a, b) => b[1] - a[1]);
+    const revenueMaxItem = revenueSortedItems[0] || ['No items', 0];
+    const revenueMinItem = revenueSortedItems[revenueSortedItems.length - 1] || ['No items', 0];
+
     return (
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
         <h2 className="text-3xl font-bold mb-8 text-gray-800">Admin Dashboard</h2>
@@ -3290,11 +3762,24 @@ const KhanaLineupApp = () => {
             </div>
           </div>
           
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-2xl p-6 shadow-lg">
+          <div
+            className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-2xl p-6 shadow-lg cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+            onClick={() => {
+              setShowAdminAnalytics(true);
+              const el = document.getElementById('admin-revenue-analytics');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+            title="Click to view revenue analytics overview"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-purple-100 text-sm">Revenue</p>
                 <p className="text-3xl font-bold">₹{totalRevenue}</p>
+                <p className="text-xs text-purple-100 mt-1">
+                  Online: ₹{onlineRevenue} · Walk-in: ₹{walkInRevenue}
+                </p>
               </div>
               <TrendingUp size={32} className="text-purple-300" />
             </div>
@@ -3304,15 +3789,26 @@ const KhanaLineupApp = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           {/* Vendors Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <h3 className="text-xl font-semibold flex items-center gap-2">
                 <Store size={24} className="text-orange-600" />
                 All Vendors
               </h3>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                  <SearchField
+                    value={vendorSearchInput}
+                    onChange={setVendorSearchInput}
+                    onSearch={val => setVendorSearchTerm(val.trim())}
+                    placeholder="Search vendors..."
+                  />
+                </div>
+              </div>
             </div>
             <div className="p-6">
               <div className="space-y-4">
-                {Object.values(users).filter(user => user.role === 'vendor').map(vendor => (
+                {filteredVendors.map(vendor => (
                   <div key={vendor.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                     <div>
                       <h4 className="font-semibold text-gray-800">{vendor.restaurantName || vendor.name}</h4>
@@ -3352,7 +3848,7 @@ const KhanaLineupApp = () => {
                           }}
                           className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-xs"
                         >
-                          View menu
+                          Vendor Screen
                         </button>
                       </div>
                     </div>
@@ -3399,50 +3895,282 @@ const KhanaLineupApp = () => {
           </div>
         </div>
 
-        {/* Database Management */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden mt-8">
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-semibold flex items-center gap-2">
-              <Database size={24} className="text-red-600" />
-              Database Management
-            </h3>
-          </div>
-          <div className="p-6">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle size={20} className="text-red-600 mt-0.5" />
-                <div className="flex-1">
-                  <h4 className="font-semibold text-red-800 mb-2">Reset Database</h4>
-                  <p className="text-red-700 text-sm mb-4">
-                    This will permanently delete all data including users, orders, and menu items. This action cannot be undone.
-                  </p>
+        <div className="space-y-8 mt-8">
+          {showAdminAnalytics && (
+            <div
+              id="admin-revenue-analytics"
+              className="bg-white rounded-2xl shadow-lg overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-semibold">Revenue & Analytics Overview</h3>
+                  <p className="text-sm text-gray-500">View system-wide revenue and performance for all vendors.</p>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Vendor:</span>
+                    <select
+                      value={analyticsVendorId}
+                      onChange={(e) => setAnalyticsVendorId(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    >
+                      <option value="all">All Vendors</option>
+                      {vendorList.map(v => (
+                        <option key={v.id} value={v.id}>
+                          {v.restaurantName || v.name || v.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Period:</span>
+                    <select
+                      value={orderFilter}
+                      onChange={(e) => setOrderFilter(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    >
+                      <option value="7days">Last 7 days</option>
+                      <option value="1month">Last Month</option>
+                      <option value="3months">Last 3 Months</option>
+                    </select>
+                  </div>
                   <button
-                    onClick={async () => {
-                      if (window.confirm('Are you absolutely sure you want to reset the entire database? This will delete ALL data and cannot be undone!')) {
-                        try {
-                          const response = await apiService.resetDatabase();
-                          if (response.success) {
-                            alert('Database reset successfully! All data has been cleared and default admin user created.');
-                            // Clear any local authentication and reload
-                            localStorage.clear();
-                            window.location.reload();
-                          } else {
-                            alert('Failed to reset database: ' + response.message);
-                          }
-                        } catch (error) {
-                          console.error('Database reset error:', error);
-                          alert('Failed to reset database. Please check server connection.');
-                        }
-                      }
-                    }}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                    type="button"
+                    onClick={() => setShowAdminAnalytics(false)}
+                    className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-colors"
                   >
-                    Reset Database
+                    Close
                   </button>
+                </div>
+              </div>
+
+            <div className="p-6 space-y-8">
+              {/* Summary cards (same style as vendor analytics) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-blue-100 text-sm">Total Sales</p>
+                      <p className="text-3xl font-bold">₹{revenueTotalSales}</p>
+                      <p className="text-xs text-blue-100 mt-1">
+                        Online: ₹{revenueOnlineSales} · Walk-in: ₹{revenueWalkInSales}
+                      </p>
+                    </div>
+                    <TrendingUp size={32} className="text-blue-300" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-green-100 text-sm">Completed Orders</p>
+                      <p className="text-3xl font-bold">{revenueTotalOrders}</p>
+                    </div>
+                    <Package size={32} className="text-green-300" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-red-100 text-sm">Cancelled Orders</p>
+                      <p className="text-3xl font-bold">{revenueTotalCancelled}</p>
+                    </div>
+                    <X size={32} className="text-red-300" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-orange-100 text-sm">Most Ordered</p>
+                      <p className="text-lg font-bold">{revenueMaxItem[0]}</p>
+                      <p className="text-orange-200 text-sm">{revenueMaxItem[1]} times</p>
+                    </div>
+                    <TrendingUp size={32} className="text-orange-300" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-purple-100 text-sm">Least Ordered</p>
+                      <p className="text-lg font-bold">{revenueMinItem[0]}</p>
+                      <p className="text-purple-200 text-sm">{revenueMinItem[1]} times</p>
+                    </div>
+                    <TrendingDown size={32} className="text-purple-300" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Completed & Cancelled Orders list */}
+              <div className="bg-gray-50 rounded-2xl p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-lg font-semibold text-gray-800">Completed & Cancelled Orders</h4>
+                  <span className="text-sm text-gray-500">
+                    {revenueCompletedAndCancelledOrders.length} order
+                    {revenueCompletedAndCancelledOrders.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {revenueCompletedAndCancelledOrders.length === 0 ? (
+                  <div className="text-center py-8">
+                    <CheckCircle size={48} className="mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-500">No completed or cancelled orders in selected period</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {revenueCompletedAndCancelledOrders.map((order) => (
+                      <div
+                        key={order._id || order.id}
+                        className="flex items-center justify-between p-4 bg-white rounded-xl hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`font-bold w-10 h-10 rounded-full flex items-center justify-center text-sm ${
+                                order.status === 'completed'
+                                  ? 'bg-green-100 text-green-600'
+                                  : 'bg-red-100 text-red-600'
+                              }`}
+                            >
+                              #{order.tokenId}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">
+                                  {order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}
+                                </p>
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    order.status === 'completed'
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}
+                                >
+                                  {order.status === 'completed' ? 'Completed' : 'Cancelled'}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-500">
+                                {(order.items || []).map(item => `${item.name} x${item.quantity}`).join(', ')}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {(() => {
+                                  const date =
+                                    order.status === 'completed'
+                                      ? (order.timestamps?.completed || order.completedAt || order.updatedAt)
+                                      : (order.timestamps?.cancelled || order.cancelledAt || order.updatedAt);
+                                  if (!date) return 'Unknown date';
+                                  try {
+                                    return new Date(date).toLocaleString();
+                                  } catch {
+                                    return 'Invalid date';
+                                  }
+                                })()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-orange-600 font-semibold">₹{order.totalAmount}</span>
+                          <button
+                            onClick={async () => {
+                              await handleOrderDelete(order._id || order.id);
+                            }}
+                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors"
+                            title="Delete Order"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Vendor revenue table */}
+              <div className="bg-gray-50 rounded-2xl p-6">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4">Revenue by Vendor</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="text-left py-3 px-6 font-semibold text-gray-700">Vendor</th>
+                        <th className="text-left py-3 px-6 font-semibold text-gray-700">Completed Orders</th>
+                        <th className="text-left py-3 px-6 font-semibold text-gray-700">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {vendorRevenueList.length === 0 ? (
+                        <tr>
+                          <td className="py-4 px-6 text-gray-500" colSpan={3}>
+                            No completed orders yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        vendorRevenueList.map((entry) => (
+                          <tr key={entry.vendorId} className="hover:bg-gray-50 transition-colors">
+                            <td className="py-3 px-6 text-gray-900">{entry.vendorName}</td>
+                            <td className="py-3 px-6 text-gray-700">{entry.orderCount}</td>
+                            <td className="py-3 px-6 font-semibold text-orange-600">₹{entry.revenue}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
           </div>
+          )}
+
+          {showAdminAnalytics && (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-xl font-semibold flex items-center gap-2">
+                  <Database size={24} className="text-red-600" />
+                  Database Management
+                </h3>
+              </div>
+              <div className="p-6">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-red-600 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-red-800 mb-2">Reset Database</h4>
+                      <p className="text-red-700 text-sm mb-4">
+                        This will permanently delete all data including users, orders, and menu items. This action cannot be undone.
+                      </p>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm('Are you absolutely sure you want to reset the entire database? This will delete ALL data and cannot be undone!')) {
+                            try {
+                              const response = await apiService.resetDatabase();
+                              if (response.success) {
+                                alert('Database reset successfully! All data has been cleared and default admin user created.');
+                                // Clear any local authentication and reload
+                                localStorage.clear();
+                                window.location.reload();
+                              } else {
+                                alert('Failed to reset database: ' + response.message);
+                              }
+                            } catch (error) {
+                              console.error('Database reset error:', error);
+                              alert('Failed to reset database. Please check server connection.');
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                      >
+                        Reset Database
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -3901,6 +4629,8 @@ const KhanaLineupApp = () => {
           : currentRole === 'vendor' 
             ? <VendorOrdersView /> 
             : <AdminOrderManagement />;
+      case 'walk-in':
+        return <VendorWalkInView />;
       case 'menu-manage':
         return (
           <VendorMenuManageView
@@ -4293,5 +5023,3 @@ const VendorMenuManageView = ({
 };
 
 export default KhanaLineupApp;
-
-
