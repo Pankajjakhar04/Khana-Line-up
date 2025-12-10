@@ -10,7 +10,9 @@ router.get('/', async (req, res) => {
   try {
     const { category, search, vendor, sortBy, limit = 50, page = 1 } = req.query;
     
-    let query = { available: true, isActive: true, stock: { $gt: 0 } };
+    // By default show all active items (even if unavailable or out of stock)
+    // so vendors can manage them and they don't appear "deleted" automatically.
+    let query = { isActive: true };
     
     // Filter by vendor
     if (vendor) {
@@ -87,9 +89,7 @@ router.get('/', async (req, res) => {
 router.get('/categories', async (req, res) => {
   try {
     const categories = await MenuItem.distinct('category', {
-      available: true,
-      isActive: true,
-      stock: { $gt: 0 }
+      isActive: true
     });
     
     res.json({

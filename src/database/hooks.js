@@ -272,10 +272,9 @@ export const useMenuItems = () => {
     const unsubscribes = [];
 
     unsubscribes.push(onSocket('menu:created', (doc) => {
-      // Keep list consistent with initial query (only available, isActive, stock>0)
-      if (doc?.available && doc?.isActive !== false && (doc?.stock ?? 0) > 0) {
+      // Include any active menu item; dedupe to avoid duplicates from realtime
+      if (doc?.isActive !== false) {
         setMenuItems((prev) => {
-          // avoid duplicates
           if (prev.find((i) => i._id === doc._id)) return prev;
           return [doc, ...prev];
         });
@@ -284,10 +283,7 @@ export const useMenuItems = () => {
 
     unsubscribes.push(onSocket('menu:updated', (doc) => {
       setMenuItems((prev) => {
-        // If updated doc no longer matches list criteria, remove it
-        const stillMatches = doc?.available && doc?.isActive !== false && (doc?.stock ?? 0) > 0;
-        if (!stillMatches) return prev.filter((i) => i._id !== doc._id);
-        // else replace
+        if (doc?.isActive === false) return prev.filter((i) => i._id !== doc._id);
         const idx = prev.findIndex((i) => i._id === doc._id);
         if (idx === -1) return [doc, ...prev];
         const next = [...prev];
@@ -436,6 +432,27 @@ export const useOrders = (currentUser, currentRole) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const normalizeId = (value) => {
+    const id = value?._id ?? value?.id ?? value;
+    if (id && typeof id === 'object' && typeof id.toString === 'function') {
+      return id.toString();
+    }
+    return id;
+  };
+
+  const dedupeOrders = (list = []) => {
+    const seen = new Set();
+    const result = [];
+    for (const order of list) {
+      const id = normalizeId(order);
+      if (!id) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      result.push(order);
+    }
+    return result;
+  };
+
   useEffect(() => {
     loadOrders();
 
@@ -443,18 +460,23 @@ export const useOrders = (currentUser, currentRole) => {
     const unsubscribes = [];
     unsubscribes.push(onSocket('order:created', (doc) => {
       setOrders((prev) => {
-        if (!doc || !doc._id) return prev;
-        if (prev.find((o) => o._id === doc._id)) return prev;
-        return [doc, ...prev];
+        const docId = normalizeId(doc);
+        if (!doc || !docId) return prev;
+
+        const alreadyExists = prev.some((o) => normalizeId(o) === docId);
+        if (alreadyExists) return prev;
+
+        return dedupeOrders([doc, ...prev]);
       });
     }));
     unsubscribes.push(onSocket('order:updated', (doc) => {
       setOrders((prev) => {
-        const idx = prev.findIndex((o) => o._id === doc._id);
-        if (idx === -1) return [doc, ...prev];
+        const docId = normalizeId(doc);
+        const idx = prev.findIndex((o) => normalizeId(o) === docId);
+        if (idx === -1) return dedupeOrders([doc, ...prev]);
         const next = [...prev];
         next[idx] = doc;
-        return next;
+        return dedupeOrders(next);
       });
     }));
     unsubscribes.push(onSocket('order:deleted', ({ _id }) => {
@@ -511,7 +533,7 @@ export const useOrders = (currentUser, currentRole) => {
         console.log('Orders loaded from API:', response);
       }
 
-      setOrders(response.orders || []);
+      setOrders(dedupeOrders(response.orders || []));
     } catch (error) {
       console.error('Error loading orders from API:', error);
       console.error('API connection required. Please check server connection.');
@@ -530,7 +552,7 @@ export const useOrders = (currentUser, currentRole) => {
       if (import.meta.env.DEV) {
         console.log('Order created via API:', response);
       }
-      setOrders(prev => [response.order, ...prev]);
+      setOrders(prev => dedupeOrders([response.order, ...prev]));
       return response.order;
     } catch (error) {
       console.error('Error creating order via API:', error);
