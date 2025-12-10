@@ -1,33 +1,37 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu } from 'lucide-react';
+import { User, ShoppingCart, Clock, CheckCircle, Package, Plus, Minus, Edit, Trash2, Bell, History, Store, Users, Settings, Search, Filter, Eye, EyeOff, UserPlus, LogIn, TrendingUp, TrendingDown, BarChart3, Database, AlertTriangle, X, Menu, Moon, Sun } from 'lucide-react';
 import SearchField from './components/SearchField';
 import { useUsers, useMenuItems, useOrders, useSettings, useAnalytics, useDatabase, useVendorApprovals } from './database/hooks.js';
 import apiService from './services/api.js';
 import GoogleLoginButton from './components/GoogleLoginButton.jsx';
-import { useSocket } from './hooks/useSocket.js';
-import NotificationCenter from './components/NotificationCenter.jsx';
+import { on as onSocket } from './services/socket.js';
 
 const KhanaLineupApp = () => {
+  // Core auth state (used to scope data loading)
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentRole, setCurrentRole] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   // Database hooks
   const { users, addUser, updateUser, deleteUser, getUserByCredentials, getUserByEmail, refreshUsers } = useUsers();
   const { menuItems, addMenuItem, updateMenuItem, deleteMenuItem, loading, refreshMenuItems } = useMenuItems();
-  const { orders, addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, deleteMultipleOrders, deleteOrdersByDateRange, getOrdersByCustomer, refreshOrders } = useOrders();
+  const { orders, addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, deleteMultipleOrders, deleteOrdersByDateRange, getOrdersByCustomer, refreshOrders } = useOrders(currentUser, currentRole);
   const { settings, updateSettings } = useSettings();
   const analytics = useAnalytics();
   const database = useDatabase();
   const { pendingVendors, approveVendor, rejectVendor, refreshPendingVendors } = useVendorApprovals();
 
-  // Socket.IO hooks
-  const { socket, isConnected, notifications: socketNotifications } = useSocket();
-
-  // Debug: Log users on app load
+  // Debug: Log users on app load (development only)
   useEffect(() => {
-    console.log('App loaded, users available:', users);
-    console.log('Admin user check:', users.admin1);
+    if (import.meta.env.DEV) {
+      console.log('App loaded, users available:', users);
+      console.log('Admin user check:', users.admin1);
+    }
   }, [users]);
 
-  // Debug: Add global debug function
+  // Debug: Add global debug function (development only)
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     window.debugVendorApprovals = {
       pendingVendors,
       refreshPendingVendors,
@@ -46,10 +50,7 @@ const KhanaLineupApp = () => {
     };
   }, [pendingVendors, refreshPendingVendors]);
 
-  // State management
-  const [currentUser, setCurrentUser] = useState(null);
-  const [currentRole, setCurrentRole] = useState(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  // State management (non-auth UI state)
 
   // Authentication persistence - check for saved login on app load
   useEffect(() => {
@@ -107,54 +108,6 @@ const KhanaLineupApp = () => {
       isMounted = false;
     };
   }, [users]);
-
-  // Socket.IO user registration
-  useEffect(() => {
-    if (socket && currentUser && isConnected) {
-      console.log('🔌 Registering user with socket:', currentUser.name, currentUser.role);
-      socket.emit('register', {
-        userId: currentUser._id,
-        name: currentUser.name,
-        role: currentUser.role
-      });
-    }
-  }, [socket, currentUser, isConnected]);
-
-  // Socket.IO event handlers for real-time updates
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleOrderUpdate = (order) => {
-      console.log('📦 Received order update:', order);
-      refreshOrders();
-    };
-
-    const handleMenuUpdate = (menuItem) => {
-      console.log('🍽️ Received menu update:', menuItem);
-      refreshMenuItems();
-    };
-
-    const handleOrderCreated = (order) => {
-      console.log('🆕 New order created:', order);
-      refreshOrders();
-    };
-
-    // Register event listeners
-    socket.on('orderStatusUpdated', handleOrderUpdate);
-    socket.on('orderCancelled', handleOrderUpdate);
-    socket.on('menuItemAdded', handleMenuUpdate);
-    socket.on('menuItemUpdated', handleMenuUpdate);
-    socket.on('orderCreated', handleOrderCreated);
-
-    return () => {
-      socket.off('orderStatusUpdated', handleOrderUpdate);
-      socket.off('orderCancelled', handleOrderUpdate);
-      socket.off('menuItemAdded', handleMenuUpdate);
-      socket.off('menuItemUpdated', handleMenuUpdate);
-      socket.off('orderCreated', handleOrderCreated);
-    };
-  }, [socket, refreshOrders, refreshMenuItems]);
-
   const [cart, setCart] = useState([]);
   const [activeTab, setActiveTab] = useState(''); // Initialize as empty, will be set by useEffect
   const [notifications, setNotifications] = useState([]);
@@ -162,7 +115,24 @@ const KhanaLineupApp = () => {
   const [vendorSearchQuery, setVendorSearchQuery] = useState('');
   const [showCart, setShowCart] = useState(false);
   const [orderFilter, setOrderFilter] = useState('7days');
+  const [customerOrdersShowHistory, setCustomerOrdersShowHistory] = useState(false);
+  const [customerOrdersHistoryFilterType, setCustomerOrdersHistoryFilterType] = useState('all');
+  const [customerOrdersHistoryFilterDate, setCustomerOrdersHistoryFilterDate] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    name: '',
+    role: 'customer',
+    phone: '',
+    street: '',
+    city: '',
+    state: '',
+    zipCode: ''
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [estimatedTimes, setEstimatedTimes] = useState({}); // Local state for estimated time inputs
   
   // Admin order management state
@@ -172,10 +142,37 @@ const KhanaLineupApp = () => {
     startDate: '',
     endDate: ''
   });
+  // Admin: selected vendor whose menu is being viewed/managed
+  const [adminSelectedVendor, setAdminSelectedVendor] = useState(null);
   
   // Profile dropdown state
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  // Theme state (light / dark)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const stored = window.localStorage.getItem('khanaLineupTheme');
+      if (stored === 'dark') return true;
+      if (stored === 'light') return false;
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch {
+      return false;
+    }
+  });
+
+  // Sync theme to <html> class and localStorage
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const theme = isDarkMode ? 'dark' : 'light';
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    try {
+      window.localStorage.setItem('khanaLineupTheme', theme);
+    } catch {
+      // ignore storage errors
+    }
+  }, [isDarkMode]);
 
   // Close profile dropdown and mobile menu when clicking outside
   useEffect(() => {
@@ -194,6 +191,101 @@ const KhanaLineupApp = () => {
     };
   }, [showProfileDropdown, showMobileMenu]);
 
+  // Vendor-specific realtime notifications for new orders
+  useEffect(() => {
+    if (!currentUser || currentRole !== 'vendor') return;
+
+    const unsubscribe = onSocket('order:created', (orderDoc) => {
+      try {
+        const vendorId = typeof orderDoc.vendor === 'object'
+          ? orderDoc.vendor._id || orderDoc.vendor.id
+          : orderDoc.vendor;
+
+        if (!vendorId) return;
+
+        const currentId = currentUser.id || currentUser._id;
+        if (vendorId === currentId) {
+          setNotifications((prev) => [
+            ...prev,
+            {
+              id: Date.now(),
+              message: `New order received - Token #${orderDoc.tokenId}`,
+              type: 'order',
+              timestamp: new Date().toISOString()
+            }
+          ]);
+        }
+      } catch (e) {
+        console.error('Error handling order:created notification:', e);
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser, currentRole]);
+
+  // Customer-specific realtime notifications for any order update
+  useEffect(() => {
+    if (!currentUser || currentRole !== 'customer') return;
+
+    const unsubscribe = onSocket('order:updated', (orderDoc) => {
+      try {
+        const customerId = typeof orderDoc.customer === 'object'
+          ? orderDoc.customer._id || orderDoc.customer.id
+          : orderDoc.customer;
+
+        if (!customerId) return;
+
+        const currentId = currentUser.id || currentUser._id;
+        if (customerId !== currentId) return;
+
+        const status = orderDoc.status;
+        let message = '';
+
+        if (orderDoc.estimatedTime && !['ready', 'completed', 'cancelled'].includes((status || '').toLowerCase())) {
+          message = `Estimated time for order #${orderDoc.tokenId}: ${orderDoc.estimatedTime} minutes.`;
+        } else {
+          switch ((status || '').toLowerCase()) {
+            case 'confirmed':
+              message = `Your order #${orderDoc.tokenId} has been confirmed.`;
+              break;
+            case 'preparing':
+              message = `Your order #${orderDoc.tokenId} is now being prepared.`;
+              break;
+            case 'ready':
+              message = `Your order #${orderDoc.tokenId} is ready for pickup!`;
+              break;
+            case 'completed':
+              message = `Your order #${orderDoc.tokenId} has been completed.`;
+              break;
+            case 'cancelled':
+              message = `Your order #${orderDoc.tokenId} has been cancelled.`;
+              break;
+            default:
+              message = `Your order #${orderDoc.tokenId} has been updated.`;
+          }
+        }
+
+        setNotifications((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            message,
+            type: 'order',
+            timestamp: new Date().toISOString()
+          }
+        ]);
+      } catch (e) {
+        console.error('Error handling order:updated notification for customer:', e);
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser, currentRole]);
+
   // Legacy support for existing code
   const registeredUsers = Object.values(users);
   const defaultUsers = {};
@@ -204,25 +296,28 @@ const KhanaLineupApp = () => {
     updateSettings({ tokenCounter: newValue });
   };
 
-  // Authentication Form Component
+  // Authentication Form helper (returns JSX). Called as a function to avoid remounting and losing focus.
   const AuthForm = () => {
-    const [formData, setFormData] = useState({
-      email: '',
-      password: '',
-      name: '',
-      role: 'customer'
-    });
-    const [showPassword, setShowPassword] = useState(false);
-    const [errors, setErrors] = useState({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const validateForm = () => {
       const newErrors = {};
       if (!formData.email) newErrors.email = 'Email is required';
       if (!formData.password) newErrors.password = 'Password is required';
       if (isRegistering && !formData.name) newErrors.name = 'Name is required';
+      if (isRegistering && !formData.phone) {
+        newErrors.phone = 'Mobile number is required';
+      } else if (isRegistering && formData.phone) {
+        const digitsOnly = formData.phone.replace(/\D/g, '');
+        if (digitsOnly.length !== 10) {
+          newErrors.phone = 'Enter a valid 10-digit mobile number';
+        }
+      }
       if (isRegistering && formData.password.length < 6) {
         newErrors.password = 'Password must be at least 6 characters';
+      }
+      if (isRegistering && formData.role === 'vendor') {
+        if (!formData.street) newErrors.street = 'Street address is required for vendors';
+        if (!formData.city) newErrors.city = 'City is required for vendors';
       }
       setErrors(newErrors);
       return Object.keys(newErrors).length === 0;
@@ -247,15 +342,34 @@ const KhanaLineupApp = () => {
           password: formData.password,
           name: formData.name,
           role: formData.role,
+          phone: formData.phone,
           status: 'active'
         };
+
+        // Send structured address fields for vendors (and optionally others)
+        if (formData.street || formData.city || formData.state || formData.zipCode) {
+          newUser.street = formData.street;
+          newUser.city = formData.city;
+          newUser.state = formData.state;
+          newUser.zipCode = formData.zipCode;
+        }
         
         const result = await addUser(newUser);
         
         if (result) {
           const registeredEmail = newUser.email;
           setIsRegistering(false);
-          setFormData({ email: registeredEmail, password: '', name: '', role: 'customer' });
+          setFormData({ 
+            email: registeredEmail, 
+            password: '', 
+            name: '', 
+            role: 'customer',
+            phone: '',
+            street: '',
+            city: '',
+            state: '',
+            zipCode: ''
+          });
           setErrors({});
           alert(`🎉 Registration Successful! Welcome ${newUser.name}! You can now login with your credentials as a ${newUser.role}.`);
         } else {
@@ -286,7 +400,17 @@ const KhanaLineupApp = () => {
           setCurrentUser(user);
           setCurrentRole(user.role);
           setActiveTab(user.role === 'customer' ? 'menu' : user.role === 'vendor' ? 'orders' : 'dashboard');
-          setFormData({ email: '', password: '', name: '', role: 'customer' });
+          setFormData({ 
+            email: '', 
+            password: '', 
+            name: '', 
+            role: 'customer',
+            phone: '',
+            street: '',
+            city: '',
+            state: '',
+            zipCode: ''
+          });
           
           // Save authentication to localStorage for persistence
           localStorage.setItem('khanaLineupAuth', JSON.stringify({
@@ -326,7 +450,17 @@ const KhanaLineupApp = () => {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-400 via-red-400 to-pink-500 flex items-center justify-center p-4">
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 sm:p-8 w-full max-w-md mx-auto">
+        <div className="glass rounded-3xl p-6 sm:p-8 w-full max-w-md mx-auto">
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="inline-flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-all duration-300"
+              aria-label="Toggle dark or light mode"
+            >
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          </div>
           <div className="text-center mb-6 sm:mb-8">
             <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent mb-2">
               Khana Line-up
@@ -370,11 +504,29 @@ const KhanaLineupApp = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
                     errors.name ? 'border-red-500' : 'border-gray-300'
                   }`}
                 />
                 {errors.name && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.name}</p>}
+              </div>
+            )}
+
+            {isRegistering && (
+              <div>
+                <input
+                  id="registration-phone"
+                  name="phone"
+                  type="tel"
+                  placeholder="Mobile Number"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
+                    errors.phone ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                />
+                {errors.phone && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.phone}</p>}
               </div>
             )}
             
@@ -387,7 +539,7 @@ const KhanaLineupApp = () => {
                 value={formData.email}
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
                 onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
+                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
                   errors.email ? 'border-red-500' : 'border-gray-300'
                 }`}
               />
@@ -418,7 +570,7 @@ const KhanaLineupApp = () => {
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
                 onKeyDown={(e) => e.key === 'Enter' && (isRegistering ? handleRegister() : handleLogin())}
-                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 pr-10 sm:pr-12 ${
+                className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 pr-10 sm:pr-12 text-gray-900 placeholder:text-gray-400 ${
                   errors.password ? 'border-red-500' : 'border-gray-300'
                 }`}
               />
@@ -433,16 +585,76 @@ const KhanaLineupApp = () => {
             </div>
 
             {isRegistering && (
-              <select
-                id="registration-role"
-                name="role"
-                value={formData.role}
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-              >
-                <option value="customer">Customer</option>
-                <option value="vendor">Vendor</option>
-              </select>
+              <>
+                <select
+                  id="registration-role"
+                  name="role"
+                  value={formData.role}
+                  onChange={(e) => setFormData({...formData, role: e.target.value})}
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent text-gray-900"
+                >
+                  <option value="customer">Customer</option>
+                  <option value="vendor">Vendor</option>
+                </select>
+
+                {formData.role === 'vendor' && (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      id="registration-street"
+                      name="street"
+                      type="text"
+                      placeholder="Shop Street Address"
+                      value={formData.street}
+                      onChange={(e) => setFormData({ ...formData, street: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                      className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
+                        errors.street ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    />
+                    {errors.street && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.street}</p>}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <input
+                          id="registration-city"
+                          name="city"
+                          type="text"
+                          placeholder="City"
+                          value={formData.city}
+                          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                          className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400 ${
+                            errors.city ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                        />
+                        {errors.city && <p className="text-red-500 text-xs sm:text-sm mt-1">{errors.city}</p>}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          id="registration-state"
+                          name="state"
+                          type="text"
+                          placeholder="State"
+                          value={formData.state}
+                          onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400"
+                        />
+                        <input
+                          id="registration-zip"
+                          name="zipCode"
+                          type="text"
+                          placeholder="ZIP Code"
+                          value={formData.zipCode}
+                          onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder:text-gray-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -525,6 +737,7 @@ const KhanaLineupApp = () => {
     setCurrentRole(null);
     setActiveTab('login');
     setCart([]);
+    setCustomerOrdersShowHistory(false);
     setShowProfileDropdown(false);
     
     // Clear authentication from localStorage
@@ -561,6 +774,91 @@ const KhanaLineupApp = () => {
     }
   };
 
+  // Utility: open a printable receipt for a given order
+  const printOrderReceipt = (order) => {
+    if (!order) return;
+
+    try {
+      const printWindow = window.open('', '_blank', 'width=600,height=800');
+      if (!printWindow) {
+        alert('Please allow pop-ups in your browser to print or download the receipt.');
+        return;
+      }
+
+      const createdAt = new Date(order.createdAt || order.timestamp).toLocaleString();
+      const vendorName =
+        order.vendor?.restaurantName ||
+        order.vendor?.name ||
+        order.vendorName ||
+        order.items?.[0]?.vendor?.restaurantName ||
+        order.items?.[0]?.vendor?.name ||
+        (currentRole === 'vendor' ? (currentUser?.restaurantName || currentUser?.name) : null) ||
+        'Vendor';
+      const customerName =
+        order.walkInCustomer?.name ||
+        order.customer?.name ||
+        order.customerName ||
+        'Walk-in Customer';
+      const sourceLabel = order.source === 'walk-in' ? 'Walk-in (Offline)' : 'Online';
+
+      const itemsHtml = (order.items || [])
+        .map(item => `
+          <tr>
+            <td>${item.name} x ${item.quantity}</td>
+            <td style="text-align:right;">₹${item.price * item.quantity}</td>
+          </tr>
+        `)
+        .join('');
+
+      printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Order Receipt - Token #${order.tokenId}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 16px; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    h2 { font-size: 16px; margin: 16px 0 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 4px 0; font-size: 13px; }
+    tfoot td { font-weight: bold; border-top: 1px solid #ccc; padding-top: 8px; }
+    .meta { font-size: 12px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Khana Line-up</h1>
+  <div class="meta"><strong>Token #${order.tokenId}</strong></div>
+  <div class="meta">Order type: ${sourceLabel}</div>
+  <div class="meta">Vendor: ${vendorName}</div>
+  <div class="meta">Customer: ${customerName}</div>
+  <div class="meta">Created at: ${createdAt}</div>
+
+  <h2>Items</h2>
+  <table>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td>Total</td>
+        <td style="text-align:right;">₹${order.totalAmount}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <p class="meta" style="margin-top:16px;">Thank you!</p>
+</body>
+</html>`);
+
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } catch (error) {
+      console.error('Error printing receipt:', error);
+      alert('Failed to open print dialog. Please try again.');
+    }
+  };
+
   // Navigation Component
   const Navigation = () => {
     const navItems = {
@@ -571,6 +869,7 @@ const KhanaLineupApp = () => {
       ],
       vendor: [
         { id: 'orders', label: 'Order Queue', icon: Clock },
+        { id: 'walk-in', label: 'Walk-in Orders', icon: History },
         { id: 'menu-manage', label: 'Manage Menu', icon: Edit },
         { id: 'completed', label: 'Completed', icon: CheckCircle },
         { id: 'analytics', label: 'Analytics', icon: BarChart3 }
@@ -584,8 +883,8 @@ const KhanaLineupApp = () => {
     };
 
     return (
-      <nav className="bg-white shadow-xl sticky top-0 z-50 mobile-menu-container">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <nav className="sticky top-0 z-50 mobile-menu-container bg-transparent">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 glass">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center gap-3">
               <div className="bg-gradient-to-r from-orange-500 to-red-500 p-2 rounded-xl">
@@ -640,6 +939,16 @@ const KhanaLineupApp = () => {
                 className="md:hidden text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100 transition-all duration-300"
               >
                 <Menu size={24} />
+              </button>
+
+              {/* Theme Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="hidden sm:inline-flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-all duration-300"
+                aria-label="Toggle dark mode"
+              >
+                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
               </button>
 
               {/* Profile Dropdown */}
@@ -724,16 +1033,52 @@ const KhanaLineupApp = () => {
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
     const addToCart = (item) => {
-      const existingItem = cart.find(cartItem => cartItem.id === item.id);
+      // Normalize IDs so different items do not collapse into one
+      const newItemId = item._id || item.id;
+      const newVendorId = item.vendor?._id || item.vendorId || (typeof item.vendor === 'string' ? item.vendor : null);
+
+      // Determine current cart vendor (if any)
+      const currentCartVendorId = cart.length > 0
+        ? (cart[0].vendor?._id || cart[0].vendorId || (typeof cart[0].vendor === 'string' ? cart[0].vendor : null))
+        : null;
+
+      // Block multi-vendor carts on the client side
+      if (cart.length > 0 && currentCartVendorId && newVendorId && currentCartVendorId !== newVendorId) {
+        const currentVendorName =
+          cart[0].vendor?.restaurantName ||
+          cart[0].vendor?.name ||
+          'your current vendor';
+
+        const newVendorName =
+          item.vendor?.restaurantName ||
+          item.vendor?.name ||
+          'this vendor';
+
+        // Show clear, friendly in-app notification and do NOT modify the cart
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            type: 'warning',
+            message: `Multi-vendor order not allowed. You already have items from ${currentVendorName}. You can only order from one vendor at a time. Please complete or clear that order before adding items from ${newVendorName}.`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+
+        return;
+      }
+
+      const existingItem = cart.find(cartItem => (cartItem._id || cartItem.id) === newItemId);
 
       if (existingItem) {
-        setCart(cart.map(cartItem => 
-          cartItem.id === item.id 
+        setCart(cart.map(cartItem =>
+          (cartItem._id || cartItem.id) === newItemId
             ? { ...cartItem, quantity: cartItem.quantity + 1 }
             : cartItem
         ));
       } else {
-        setCart([...cart, { ...item, quantity: 1 }]);
+        // Store a normalized id on cart items to avoid future ambiguity
+        setCart([...cart, { ...item, id: newItemId, quantity: 1 }]);
       }
       
       setShowCart(true);
@@ -791,7 +1136,7 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredItems.map(item => (
-              <div key={item.id} className={`bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
+              <div key={item._id || item.id} className={`menu-card glass rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105 group ${!item.available ? 'opacity-75' : ''}`}>
                 <div className="bg-gradient-to-br from-orange-100 to-red-100 h-32 flex items-center justify-center">
                   <Package size={40} className="text-orange-500" />
                 </div>
@@ -806,6 +1151,19 @@ const KhanaLineupApp = () => {
                       {item.vendor?.restaurantName || item.vendor?.name || item.vendorName || 'Unknown Vendor'}
                     </p>
                   </div>
+                  {(item.vendor?.fullAddress || item.vendor?.address) && (
+                    <p className="text-xs text-gray-400 mb-1">
+                      {item.vendor?.fullAddress || (typeof item.vendor?.address === 'string'
+                        ? item.vendor.address
+                        : [
+                            item.vendor?.address?.street,
+                            item.vendor?.address?.city,
+                            item.vendor?.address?.state,
+                            item.vendor?.address?.zipCode
+                          ].filter(Boolean).join(', ')
+                      )}
+                    </p>
+                  )}
                   {item.description && (
                     <p className="text-xs text-gray-400 mb-2">{item.description}</p>
                   )}
@@ -833,11 +1191,14 @@ const KhanaLineupApp = () => {
         {cart.length > 0 && (
           <button
             onClick={() => setActiveTab('cart')}
-            className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 bg-gradient-to-r from-orange-500 to-red-500 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 transform hover:scale-110 z-50 ${
+            className={`fixed inset-x-4 bottom-4 sm:inset-auto sm:bottom-6 sm:right-6 bg-gradient-to-r from-orange-500 to-red-500 text-white py-3 sm:p-4 rounded-2xl sm:rounded-full shadow-2xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 transform hover:scale-105 z-50 flex items-center justify-center gap-2 ${
               showCart ? 'animate-bounce' : ''
             }`}
           >
             <ShoppingCart size={20} className="sm:w-6 sm:h-6" />
+            <span className="hidden xs:inline-block font-semibold text-sm">
+              View Cart
+            </span>
             <span className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-500 text-white rounded-full px-1.5 py-0.5 sm:px-2 sm:py-1 text-xs animate-pulse min-w-[20px] text-center">
               {cart.length}
             </span>
@@ -864,9 +1225,27 @@ const KhanaLineupApp = () => {
     const placeOrder = async () => {
       if (cart.length === 0) return;
 
+      if (!currentUser || !currentUser.id) {
+        console.error('Cannot place order: missing currentUser or user id', currentUser);
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message: 'Unable to place order. Please log in again and try once more.',
+            type: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
+
       // Group cart items by vendor since backend expects one vendor per order
       const itemsByVendor = cart.reduce((acc, item) => {
-        const vendorId = item.vendor?._id || item.vendorId;
+        const vendorId =
+          item.vendor?._id ||
+          item.vendorId ||
+          (typeof item.vendor === 'string' ? item.vendor : null);
+
         if (!vendorId) {
           console.error('Item missing vendor information:', item);
           return acc;
@@ -888,9 +1267,24 @@ const KhanaLineupApp = () => {
         return acc;
       }, {});
 
+      const vendorIds = Object.keys(itemsByVendor);
+      if (vendorIds.length === 0) {
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message: 'Unable to place order. Menu items are missing vendor information. Please refresh and try again.',
+            type: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
+
       try {
         // Create separate orders for each vendor
-        const orderPromises = Object.entries(itemsByVendor).map(async ([vendorId, data]) => {
+        const orderPromises = vendorIds.map(async (vendorId) => {
+          const data = itemsByVendor[vendorId];
           const newOrder = {
             customer: currentUser.id,
             vendor: vendorId,
@@ -919,12 +1313,27 @@ const KhanaLineupApp = () => {
 
       } catch (error) {
         console.error('Error placing order:', error);
-        setNotifications(prev => [...prev, {
-          id: Date.now(),
-          message: 'Failed to place order. Please try again.',
-          type: 'error',
-          timestamp: new Date().toISOString()
-        }]);
+
+        // Show a more helpful message based on backend error
+        let message = error?.data?.message || error?.message || 'Failed to place order. Please try again.';
+        if (
+          error?.errorType === 'MULTI_VENDOR_NOT_ALLOWED' ||
+          error?.data?.errorType === 'MULTI_VENDOR_NOT_ALLOWED'
+        ) {
+          message =
+            error?.data?.message ||
+            'You can only place an order with items from one vendor at a time. Please clear your cart and add items from a single vendor.';
+        }
+
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message,
+            type: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
       }
     };
 
@@ -946,7 +1355,7 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="space-y-6">
             {cart.map(item => (
-              <div key={item.id} className="bg-white rounded-2xl shadow-lg p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-xl transition-all duration-300">
+              <div key={item.id} className="glass rounded-2xl shadow-lg p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-xl transition-all duration-300">
                 <div className="flex-1">
                   <h4 className="text-lg font-semibold mb-1">{item.name}</h4>
                   <p className="text-gray-600">₹{item.price} each</p>
@@ -993,12 +1402,51 @@ const KhanaLineupApp = () => {
   };
 
   // Customer Orders View
-  const CustomerOrdersView = () => {
+  const CustomerOrdersView = ({ 
+    showHistory, 
+    setShowHistory,
+    historyFilterType,
+    setHistoryFilterType,
+    historyFilterDate,
+    setHistoryFilterDate,
+  }) => {
     const customerOrders = getOrdersByCustomer(currentUser.id);
-    const [showHistory, setShowHistory] = useState(false);
     
     const activeOrders = customerOrders.filter(order => order.status !== 'completed' && order.status !== 'cancelled');
     const completedOrders = customerOrders.filter(order => order.status === 'completed' || order.status === 'cancelled');
+
+    const filterCompletedOrders = (orders) => {
+      if (!showHistory) return orders;
+      if (historyFilterType === 'all') return orders;
+
+      const now = new Date();
+
+      if (historyFilterType === '7days' || historyFilterType === '30days' || historyFilterType === '90days') {
+        const fromDate = new Date();
+        const daysBack = historyFilterType === '7days' ? 7 : historyFilterType === '30days' ? 30 : 90;
+        fromDate.setDate(now.getDate() - daysBack);
+
+        return orders.filter(order => {
+          const orderDate = new Date(order.createdAt || order.timestamp);
+          return orderDate >= fromDate;
+        });
+      }
+
+      if (historyFilterType === 'date' && historyFilterDate) {
+        const selected = new Date(historyFilterDate);
+        if (Number.isNaN(selected.getTime())) return orders;
+
+        return orders.filter(order => {
+          const orderDate = new Date(order.createdAt || order.timestamp);
+          return orderDate.toDateString() === selected.toDateString();
+        });
+      }
+
+      return orders;
+    };
+
+    const filteredCompletedOrders = filterCompletedOrders(completedOrders);
+    const historyCount = historyFilterType === 'all' ? completedOrders.length : filteredCompletedOrders.length;
 
     const getStatusColor = (status) => {
       switch (status) {
@@ -1029,12 +1477,17 @@ const KhanaLineupApp = () => {
       }
     };
 
-    const ordersToShow = showHistory ? completedOrders : activeOrders;
+    const ordersToShow = showHistory ? filteredCompletedOrders : activeOrders;
 
     return (
       <div className="max-w-6xl mx-auto p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-          <h2 className="text-3xl font-bold text-gray-800">My Orders</h2>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-3">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-800">My Orders</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Viewing: <span className="font-semibold text-orange-600">{showHistory ? 'Order History' : 'Active Orders'}</span>
+            </p>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => refreshOrders()}
@@ -1046,24 +1499,54 @@ const KhanaLineupApp = () => {
               onClick={() => setShowHistory(false)}
               className={`px-4 py-2 rounded-xl transition-all duration-300 ${
                 !showHistory 
-                  ? 'bg-orange-500 text-white shadow-lg' 
+                  ? 'bg-orange-500 text-white shadow-lg border border-orange-600' 
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Active Orders
+              Active Orders ({activeOrders.length})
             </button>
             <button
               onClick={() => setShowHistory(true)}
               className={`px-4 py-2 rounded-xl transition-all duration-300 ${
                 showHistory 
-                  ? 'bg-orange-500 text-white shadow-lg' 
+                  ? 'bg-orange-500 text-white shadow-lg border border-orange-600' 
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Order History
+              Order History ({historyCount})
             </button>
           </div>
         </div>
+
+        {showHistory && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <Filter size={18} className="text-gray-500" />
+              <span className="text-sm text-gray-600">Filter history by:</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={historyFilterType}
+                onChange={(e) => setHistoryFilterType(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              >
+                <option value="all">All time</option>
+                <option value="7days">Last 7 days</option>
+                <option value="30days">Last 30 days</option>
+                <option value="90days">Last 90 days</option>
+                <option value="date">Specific date</option>
+              </select>
+              {historyFilterType === 'date' && (
+                <input
+                  type="date"
+                  value={historyFilterDate}
+                  onChange={(e) => setHistoryFilterDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                />
+              )}
+            </div>
+          </div>
+        )}
         
         {ordersToShow.length === 0 ? (
           <div className="text-center py-12">
@@ -1083,13 +1566,30 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="space-y-6">
             {ordersToShow.map(order => (
-              <div key={order._id || order.id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300">
+              <div key={order._id || order.id} className="glass rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                   <div>
                     <h3 className="text-xl font-bold text-orange-600">Token #{order.tokenId}</h3>
                     <p className="text-gray-600">{new Date(order.createdAt || order.timestamp).toLocaleString()}</p>
-                    {order.items && order.items.length > 0 && (order.items[0].vendor?.name || order.items[0].vendorName) && (
-                      <p className="text-sm text-orange-600 font-medium">Vendor: {order.items[0].vendor?.name || order.items[0].vendorName}</p>
+                    {(order.vendor || (order.items && order.items.length > 0 && (order.items[0].vendor || order.items[0].vendorName))) && (
+                      <>
+                        <p className="text-sm text-orange-600 font-medium">
+                          Vendor: {order.vendor?.restaurantName || order.vendor?.name || order.items[0].vendor?.name || order.items[0].vendorName}
+                        </p>
+                        {(order.vendor?.fullAddress || order.vendor?.address) && (
+                          <p className="text-xs text-gray-500">
+                            {order.vendor?.fullAddress || (typeof order.vendor?.address === 'string'
+                              ? order.vendor.address
+                              : [
+                                  order.vendor?.address?.street,
+                                  order.vendor?.address?.city,
+                                  order.vendor?.address?.state,
+                                  order.vendor?.address?.zipCode
+                                ].filter(Boolean).join(', ')
+                            )}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
@@ -1114,8 +1614,8 @@ const KhanaLineupApp = () => {
                   </div>
                 </div>
                 
-                {/* Debug info for estimated time - only visible in console */}
-                {(() => {
+                {/* Debug info for estimated time - only visible in console (development only) */}
+                {import.meta.env.DEV && (() => {
                   console.log('Order debug:', {
                     tokenId: order.tokenId,
                     estimatedTime: order.estimatedTime,
@@ -1281,6 +1781,20 @@ const KhanaLineupApp = () => {
       }
     };
 
+    // Adjust estimated time by +/- delta minutes
+    const adjustEstimatedTime = (orderId, delta) => {
+      setEstimatedTimes(prev => {
+        const order = orders.find(o => (o._id || o.id) === orderId);
+        const baseRaw = prev[orderId] ?? (order?.estimatedTime ?? 0);
+        const current = parseInt(baseRaw) || 0;
+        const next = Math.min(120, Math.max(1, current + delta));
+        return {
+          ...prev,
+          [orderId]: String(next)
+        };
+      });
+    };
+
     // Get current estimated time value (from local state or order data)
     const getEstimatedTimeValue = (order) => {
       const orderId = order._id || order.id;
@@ -1306,11 +1820,11 @@ const KhanaLineupApp = () => {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {queueOrders.map(order => (
-              <div key={order._id || order.id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 transform hover:scale-105">
+              <div key={order._id || order.id} className="glass rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 transform hover:scale-105">
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-orange-600">Token #{order.tokenId}</h3>
-                    <p className="text-gray-600 font-medium">{order.customer?.name || order.customerName || 'Unknown Customer'}</p>
+                    <p className="text-gray-600 font-medium">{order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}</p>
                     <p className="text-sm text-gray-500">{new Date(order.createdAt || order.timestamp).toLocaleString()}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
@@ -1339,53 +1853,81 @@ const KhanaLineupApp = () => {
                 </div>
                 
                 <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      id={`estimated-time-${order._id || order.id}`}
-                      name={`estimated-time-${order._id || order.id}`}
-                      type="number"
-                      placeholder="Est. time (mins)"
-                      min="1"
-                      max="120"
-                      autoComplete="off"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
-                      onChange={(e) => handleEstimatedTimeChange(order._id || order.id, e.target.value)}
-                      onBlur={() => handleEstimatedTimeSubmit(order._id || order.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.target.blur(); // This will trigger onBlur
-                        }
-                      }}
-                      value={getEstimatedTimeValue(order)}
-                    />
-                    <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg">mins</span>
+                  <div className="flex flex-col sm:flex-row gap-2 items-stretch">
+                    <div className="flex flex-1 gap-2 items-center">
+                      <input
+                        id={`estimated-time-${order._id || order.id}`}
+                        name={`estimated-time-${order._id || order.id}`}
+                        type="number"
+                        placeholder="Est. time (mins)"
+                        min="1"
+                        max="120"
+                        autoComplete="off"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                        onChange={(e) => handleEstimatedTimeChange(order._id || order.id, e.target.value)}
+                        onBlur={() => handleEstimatedTimeSubmit(order._id || order.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.target.blur(); // This will trigger onBlur
+                          }
+                        }}
+                        value={getEstimatedTimeValue(order)}
+                      />
+                      <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg whitespace-nowrap">mins</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => adjustEstimatedTime(order._id || order.id, -5)}
+                        className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                      >
+                        -5
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => adjustEstimatedTime(order._id || order.id, 5)}
+                        className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                      >
+                        +5
+                      </button>
+                    </div>
                   </div>
                   
-                  <div className="flex gap-2">
-                    {order.status === 'ordered' && (
-                      <button
-                        onClick={() => handleOrderStatusUpdate(order._id || order.id, 'preparing')}
-                        className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white py-2 rounded-lg hover:from-yellow-600 hover:to-orange-600 transition-all duration-300 transform hover:scale-105 font-medium"
-                      >
-                        Start Preparing
-                      </button>
-                    )}
-                    {order.status === 'preparing' && (
-                      <button
-                        onClick={() => handleOrderStatusUpdate(order._id || order.id, 'ready')}
-                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all duration-300 transform hover:scale-105 font-medium"
-                      >
-                        Mark Ready
-                      </button>
-                    )}
-                    {order.status === 'ready' && (
-                      <button
-                        onClick={() => handleOrderStatusUpdate(order._id || order.id, 'completed')}
-                        className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-300 transform hover:scale-105 font-medium"
-                      >
-                        Complete Order
-                      </button>
-                    )}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      {order.status === 'ordered' && (
+                        <button
+                          onClick={() => handleOrderStatusUpdate(order._id || order.id, 'preparing')}
+                          className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white py-2 rounded-lg hover:from-yellow-600 hover:to-orange-600 transition-all duration-300 transform hover:scale-105 font-medium"
+                        >
+                          Start Preparing
+                        </button>
+                      )}
+                      {order.status === 'preparing' && (
+                        <button
+                          onClick={() => handleOrderStatusUpdate(order._id || order.id, 'ready')}
+                          className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all duration-300 transform hover:scale-105 font-medium"
+                        >
+                          Mark Ready
+                        </button>
+                      )}
+                      {order.status === 'ready' && (
+                        <button
+                          onClick={() => handleOrderStatusUpdate(order._id || order.id, 'completed')}
+                          className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-300 transform hover:scale-105 font-medium"
+                        >
+                          Complete Order
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Print / download receipt for this order */}
+                    <button
+                      onClick={() => printOrderReceipt(order)}
+                      className="w-full bg-white text-orange-600 border border-orange-300 py-2 rounded-lg hover:bg-orange-50 transition-all duration-300 font-medium"
+                    >
+                      Print / Download Receipt
+                    </button>
                   </div>
                   
                   {/* Cancel button - always available for non-completed orders */}
@@ -1400,6 +1942,230 @@ const KhanaLineupApp = () => {
             ))}
           </div>
         )}
+      </div>
+    );
+  };
+
+  // Vendor Walk-in Orders View (offline orders created by vendor)
+  const VendorWalkInView = () => {
+    const [walkInCart, setWalkInCart] = useState([]);
+    const [walkInName, setWalkInName] = useState('');
+    const [walkInPhone, setWalkInPhone] = useState('');
+
+    const vendorId = currentUser?.id || currentUser?._id;
+
+    // Only this vendor's menu items
+    const vendorMenuItems = menuItems.filter(item => {
+      const itemVendorId =
+        item.vendor?._id ||
+        item.vendorId ||
+        (typeof item.vendor === 'string' ? item.vendor : null);
+      return itemVendorId === vendorId;
+    });
+
+    const addToWalkInCart = (item) => {
+      const id = item._id || item.id;
+      const existing = walkInCart.find(ci => ci.id === id);
+      if (existing) {
+        setWalkInCart(walkInCart.map(ci =>
+          ci.id === id ? { ...ci, quantity: ci.quantity + 1 } : ci
+        ));
+      } else {
+        setWalkInCart([
+          ...walkInCart,
+          {
+            id,
+            menuItem: id,
+            name: item.name,
+            price: item.price,
+            quantity: 1,
+          },
+        ]);
+      }
+    };
+
+    const updateWalkInQuantity = (id, qty) => {
+      if (qty <= 0) {
+        setWalkInCart(walkInCart.filter(ci => ci.id !== id));
+      } else {
+        setWalkInCart(walkInCart.map(ci =>
+          ci.id === id ? { ...ci, quantity: qty } : ci
+        ));
+      }
+    };
+
+    const walkInTotal = walkInCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const placeWalkInOrder = async () => {
+      if (!vendorId || walkInCart.length === 0) return;
+
+      try {
+        const orderPayload = {
+          vendor: vendorId,
+          source: 'walk-in',
+          items: walkInCart.map(item => ({
+            menuItem: item.menuItem,
+            quantity: item.quantity,
+          })),
+        };
+
+        if (walkInName || walkInPhone) {
+          orderPayload.walkInCustomer = {
+            name: walkInName,
+            phone: walkInPhone,
+          };
+        }
+
+        const created = await addOrder(orderPayload);
+        setWalkInCart([]);
+        setWalkInName('');
+        setWalkInPhone('');
+
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message: `Walk-in order placed - Token #${created.tokenId}`,
+            type: 'success',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } catch (error) {
+        console.error('Error placing walk-in order:', error);
+        setNotifications(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            message: error?.message || 'Failed to place walk-in order. Please try again.',
+            type: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+    };
+
+    return (
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Left: menu items */}
+          <div className="flex-1">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-800">Walk-in Orders</h2>
+                <p className="text-sm text-gray-500">Create offline orders using your live menu</p>
+              </div>
+            </div>
+
+            {vendorMenuItems.length === 0 ? (
+              <div className="text-center py-12">
+                <Package size={64} className="mx-auto text-gray-400 mb-4" />
+                <p className="text-gray-600 text-lg">No menu items found for this vendor.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {vendorMenuItems.map(item => (
+                  <div
+                    key={item._id || item.id}
+                    className="glass rounded-2xl shadow-lg p-4 flex flex-col justify-between"
+                  >
+                    <div>
+                      <h4 className="text-lg font-semibold mb-1">{item.name}</h4>
+                      <p className="text-sm text-gray-500 mb-1">{item.category}</p>
+                      <p className="text-xl font-bold text-orange-600">₹{item.price}</p>
+                    </div>
+                    <button
+                      onClick={() => addToWalkInCart(item)}
+                      disabled={!item.available}
+                      className={`mt-3 w-full py-2 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 ${
+                        item.available
+                          ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <Plus size={18} />
+                      {item.available ? 'Add to Walk-in Cart' : 'Unavailable'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right: walk-in cart */}
+          <div className="w-full lg:w-96 bg-white rounded-2xl shadow-lg p-5 h-fit">
+            <h3 className="text-xl font-semibold mb-3">Walk-in Cart</h3>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Customer Name (optional)</label>
+                <input
+                  type="text"
+                  value={walkInName}
+                  onChange={(e) => setWalkInName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                  placeholder="Walk-in customer name"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Customer Phone (optional)</label>
+                <input
+                  type="tel"
+                  value={walkInPhone}
+                  onChange={(e) => setWalkInPhone(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                  placeholder="Phone number"
+                />
+              </div>
+            </div>
+
+            {walkInCart.length === 0 ? (
+              <p className="text-sm text-gray-500 mb-4">No items in walk-in cart.</p>
+            ) : (
+              <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
+                {walkInCart.map(item => (
+                  <div key={item.id} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{item.name}</p>
+                      <p className="text-xs text-gray-500">₹{item.price} each</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => updateWalkInQuantity(item.id, item.quantity - 1)}
+                        className="w-7 h-7 flex items-center justify-center bg-gray-100 rounded-lg"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="text-sm font-semibold w-6 text-center">{item.quantity}</span>
+                      <button
+                        onClick={() => updateWalkInQuantity(item.id, item.quantity + 1)}
+                        className="w-7 h-7 flex items-center justify-center bg-gray-100 rounded-lg"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t pt-3 mt-3 flex items-center justify-between">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="text-lg font-bold text-orange-600">₹{walkInTotal}</span>
+            </div>
+
+            <button
+              onClick={placeWalkInOrder}
+              disabled={walkInCart.length === 0}
+              className={`mt-4 w-full py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                walkInCart.length === 0
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transform hover:scale-105'
+              }`}
+            >
+              Create Walk-in Order
+            </button>
+          </div>
+        </div>
       </div>
     );
   };
@@ -1425,18 +2191,28 @@ const KhanaLineupApp = () => {
 
     const [editingItem, setEditingItem] = useState(null);
     const [editData, setEditData] = useState({});
-    const [newItem, setNewItem] = useState({ name: '', price: '', category: '', available: true, description: '' });
+    const [newItem, setNewItem] = useState({
+      name: '',
+      price: '',
+      category: '',
+      available: true,
+      description: ''
+    });
     const [localVendorSearchQuery, setLocalVendorSearchQuery] = useState('');
 
   const [vendorInput, setVendorInput] = useState('');
   const [vendorSearchTerm, setVendorSearchTerm] = useState('');
 
     const filteredMenuItems = menuItems.filter(item => {
+      // Normalize IDs
+      const itemId = item._id || item.id;
+      const vendorId = item.vendor?._id || item.vendorId || (typeof item.vendor === 'string' ? item.vendor : null);
+
       // Only show items belonging to current vendor
-      const belongsToVendor = item.vendor?._id === currentUser?.id || item.vendorId === currentUser?.id;
+      const belongsToVendor = vendorId === (currentUser?.id || currentUser?._id);
       if (!vendorSearchTerm) return belongsToVendor;
-      const matchesSearch = item.name.toLowerCase().includes(vendorSearchTerm.toLowerCase())
-        || item.category.toLowerCase().includes(vendorSearchTerm.toLowerCase());
+      const matchesSearch = item.name?.toLowerCase().includes(vendorSearchTerm.toLowerCase())
+        || item.category?.toLowerCase().includes(vendorSearchTerm.toLowerCase());
       return belongsToVendor && matchesSearch;
     });
 
@@ -1454,7 +2230,8 @@ const KhanaLineupApp = () => {
         
         try {
           await addMenuItem(item);
-          setNewItem({ name: '', price: '', category: '', available: true, description: '' });
+          // Do not clear the form fields automatically to avoid the "all fields empty" effect
+          // Vendor can now add multiple similar items without retyping everything.
           alert('Menu item added successfully!');
         } catch (error) {
           console.error('Error adding menu item:', error);
@@ -1466,14 +2243,21 @@ const KhanaLineupApp = () => {
     };
 
     const startEdit = (item) => {
-      setEditingItem(item.id);
+      const itemId = item._id || item.id;
+      setEditingItem(itemId);
       setEditData({ ...item });
     };
 
-    const saveEdit = () => {
-      updateMenuItem(editingItem, { ...editData, price: parseInt(editData.price) });
-      setEditingItem(null);
-      setEditData({});
+    const saveEdit = async () => {
+      if (!editingItem) return;
+      try {
+        await updateMenuItem(editingItem, { ...editData, price: parseInt(editData.price) });
+      } catch (error) {
+        console.error('Error saving menu item edit:', error);
+      } finally {
+        setEditingItem(null);
+        setEditData({});
+      }
     };
 
     const cancelEdit = () => {
@@ -1482,15 +2266,17 @@ const KhanaLineupApp = () => {
     };
 
     const deleteItem = (id) => {
+      const itemId = id._id || id.id || id;
       if (window.confirm('Are you sure you want to delete this item?')) {
-        deleteMenuItem(id);
+        deleteMenuItem(itemId);
       }
     };
 
     const toggleAvailability = (id) => {
-      const item = menuItems.find(item => item.id === id);
+      const itemId = id._id || id.id || id;
+      const item = menuItems.find(item => (item._id || item.id) === itemId);
       if (item) {
-        updateMenuItem(id, { ...item, available: !item.available });
+        updateMenuItem(itemId, { ...item, available: !item.available });
       }
     };
 
@@ -1573,13 +2359,15 @@ const KhanaLineupApp = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
-          {filteredMenuItems.map(item => (
-            <div key={item.id} className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}>
-              {editingItem === item.id ? (
+          {filteredMenuItems.map(item => {
+            const itemId = item._id || item.id;
+            return (
+            <div key={itemId} className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}>
+              {editingItem === itemId ? (
                 <div className="space-y-4">
                   <input
-                    id={`edit-item-name-${item.id}`}
-                    name={`editItemName-${item.id}`}
+                    id={`edit-item-name-${item._id || item.id}`}
+                    name={`editItemName-${item._id || item.id}`}
                     type="text"
                     value={editData.name || ''}
                     onChange={(e) => setEditData({ ...editData, name: e.target.value })}
@@ -1587,8 +2375,8 @@ const KhanaLineupApp = () => {
                     placeholder="Item name"
                   />
                   <input
-                    id={`edit-item-price-${item.id}`}
-                    name={`editItemPrice-${item.id}`}
+                    id={`edit-item-price-${item._id || item.id}`}
+                    name={`editItemPrice-${item._id || item.id}`}
                     type="number"
                     value={editData.price || ''}
                     onChange={(e) => setEditData({ ...editData, price: e.target.value })}
@@ -1596,8 +2384,8 @@ const KhanaLineupApp = () => {
                     placeholder="Price"
                   />
                   <select
-                    id={`edit-item-category-${item.id}`}
-                    name={`editItemCategory-${item.id}`}
+                    id={`edit-item-category-${item._id || item.id}`}
+                    name={`editItemCategory-${item._id || item.id}`}
                     value={editData.category || ''}
                     onChange={(e) => setEditData({ ...editData, category: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
@@ -1654,7 +2442,7 @@ const KhanaLineupApp = () => {
                       Edit
                     </button>
                     <button
-                      onClick={() => toggleAvailability(item.id)}
+                      onClick={() => toggleAvailability(item._id || item.id)}
                       className={`py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
                         item.available 
                           ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600' 
@@ -1664,7 +2452,7 @@ const KhanaLineupApp = () => {
                       {item.available ? 'Disable' : 'Enable'}
                     </button>
                     <button
-                      onClick={() => deleteItem(item.id)}
+                      onClick={() => deleteItem(item._id || item.id)}
                       className="col-span-2 bg-gradient-to-r from-red-500 to-pink-500 text-white py-2 rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
                     >
                       <Trash2 size={14} />
@@ -1674,7 +2462,324 @@ const KhanaLineupApp = () => {
                 </div>
               )}
             </div>
-          ))}
+          );
+        })}
+        </div>
+      </div>
+    );
+  };
+
+  // Admin Vendor Menu Management (admin can view/edit a specific vendor's menu)
+  const AdminVendorMenuView = () => {
+    const isAllMode = !adminSelectedVendor;
+
+    const [editingItem, setEditingItem] = useState(null);
+    const [editData, setEditData] = useState({});
+    const [newItem, setNewItem] = useState({ name: '', price: '', category: '', available: true, description: '' });
+    const [searchInput, setSearchInput] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const vendorId = isAllMode ? null : (adminSelectedVendor.id || adminSelectedVendor._id);
+
+    const filteredMenuItems = menuItems.filter(item => {
+      const itemVendorId = item.vendor?._id || item.vendorId || (typeof item.vendor === 'string' ? item.vendor : null);
+      const belongsToVendor = isAllMode ? true : itemVendorId === vendorId;
+      if (!searchTerm) return belongsToVendor;
+      const matchesSearch = item.name?.toLowerCase().includes(searchTerm.toLowerCase())
+        || item.category?.toLowerCase().includes(searchTerm.toLowerCase());
+      return belongsToVendor && matchesSearch;
+    });
+
+    const addItem = async () => {
+      if (isAllMode) return; // safety: only add when a specific vendor is selected
+
+      if (newItem.name && newItem.price && newItem.category) {
+        const item = {
+          name: newItem.name,
+          price: parseInt(newItem.price, 10),
+          category: newItem.category,
+          description: newItem.description,
+          available: true,
+          vendor: vendorId,
+          stock: 10
+        };
+
+        try {
+          await addMenuItem(item);
+          alert('Menu item added successfully!');
+        } catch (error) {
+          console.error('Error adding menu item as admin:', error);
+          alert('Error adding menu item: ' + (error.message || 'Unknown error'));
+        }
+      } else {
+        alert('Please fill in all required fields (Name, Price, and Category)');
+      }
+    };
+
+    const startEdit = (item) => {
+      const itemId = item._id || item.id;
+      setEditingItem(itemId);
+      setEditData({ ...item });
+    };
+
+    const saveEdit = async () => {
+      if (!editingItem) return;
+      try {
+        await updateMenuItem(editingItem, { ...editData, price: parseInt(editData.price, 10) });
+      } catch (error) {
+        console.error('Error saving menu item edit as admin:', error);
+        alert('Error saving menu item: ' + (error.message || 'Unknown error'));
+      } finally {
+        setEditingItem(null);
+        setEditData({});
+      }
+    };
+
+    const cancelEdit = () => {
+      setEditingItem(null);
+      setEditData({});
+    };
+
+    const deleteItem = (id) => {
+      const itemId = id._id || id.id || id;
+      if (window.confirm('Are you sure you want to delete this item?')) {
+        deleteMenuItem(itemId).catch((error) => {
+          console.error('Error deleting menu item as admin:', error);
+          alert('Error deleting menu item. Please try again.');
+        });
+      }
+    };
+
+    const toggleAvailability = (id) => {
+      const itemId = id._id || id.id || id;
+      const item = menuItems.find(item => (item._id || item.id) === itemId);
+      if (item) {
+        updateMenuItem(itemId, { ...item, available: !item.available }).catch((error) => {
+          console.error('Error toggling availability as admin:', error);
+          alert('Error toggling availability. Please try again.');
+        });
+      }
+    };
+
+    return (
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-800">{isAllMode ? 'All Menu Items' : 'Manage Menu'}</h2>
+            {!isAllMode && (
+              <p className="text-sm text-gray-600 mt-1">
+                Vendor: {adminSelectedVendor.restaurantName || adminSelectedVendor.name}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-80">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <SearchField
+                value={searchInput}
+                onChange={setSearchInput}
+                onSearch={val => setSearchTerm(val.trim())}
+                placeholder="Search menu items..."
+              />
+            </div>
+            <button
+              onClick={() => {
+                setAdminSelectedVendor(null);
+                setActiveTab('dashboard');
+              }}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+
+        {!isAllMode && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+            <h3 className="text-xl font-semibold mb-4">Add New Item</h3>
+            <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+              <p className="text-sm text-gray-600">
+                Menu Items Status: {loading ? 'Loading...' : `${menuItems.length} items loaded`} | 
+                Filtered: {filteredMenuItems.length} items
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+              <input
+                id="admin-new-item-name"
+                name="itemName"
+                type="text"
+                placeholder="Item Name*"
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              />
+              <input
+                id="admin-new-item-price"
+                name="itemPrice"
+                type="number"
+                placeholder="Price*"
+                value={newItem.price}
+                onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              />
+              <select
+                id="admin-new-item-category"
+                name="itemCategory"
+                value={newItem.category}
+                onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              >
+                <option value="">Select Category*</option>
+                <option value="Main Course">Main Course</option>
+                <option value="Bread">Bread</option>
+                <option value="Rice">Rice</option>
+                <option value="Beverage">Beverage</option>
+                <option value="Dessert">Dessert</option>
+              </select>
+              <input
+                id="admin-new-item-description"
+                name="itemDescription"
+                type="text"
+                placeholder="Description"
+                value={newItem.description}
+                onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+                className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+              />
+              <button
+                onClick={addItem}
+                className="bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 sm:py-3 text-sm sm:text-base rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 flex items-center justify-center gap-2 transform hover:scale-105 font-medium"
+              >
+                <Plus size={18} />
+                <span className="hidden sm:inline">Add Item</span>
+                <span className="sm:hidden">Add</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isAllMode && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+            <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+              <p className="text-sm text-gray-600">
+                Menu Items Status: {loading ? 'Loading...' : `${menuItems.length} items loaded`} | 
+                Filtered: {filteredMenuItems.length} items
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+          {filteredMenuItems.map(item => {
+            const itemId = item._id || item.id;
+            return (
+              <div key={itemId} className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}>
+                {editingItem === itemId ? (
+                  <div className="space-y-4">
+                    <input
+                      id={`admin-edit-item-name-${item._id || item.id}`}
+                      name={`adminEditItemName-${item._id || item.id}`}
+                      type="text"
+                      value={editData.name || ''}
+                      onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                      placeholder="Item name"
+                    />
+                    <input
+                      id={`admin-edit-item-price-${item._id || item.id}`}
+                      name={`adminEditItemPrice-${item._id || item.id}`}
+                      type="number"
+                      value={editData.price || ''}
+                      onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                      placeholder="Price"
+                    />
+                    <select
+                      id={`admin-edit-item-category-${item._id || item.id}`}
+                      name={`adminEditItemCategory-${item._id || item.id}`}
+                      value={editData.category || ''}
+                      onChange={(e) => setEditData({ ...editData, category: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    >
+                      <option value="Main Course">Main Course</option>
+                      <option value="Bread">Bread</option>
+                      <option value="Rice">Rice</option>
+                      <option value="Beverage">Beverage</option>
+                      <option value="Dessert">Dessert</option>
+                    </select>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEdit}
+                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 font-medium"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex-1">
+                        <h4 className="text-lg font-semibold mb-1">{item.name}</h4>
+                        <p className="text-gray-600 text-sm mb-1">{item.category}</p>
+                        {item.description && (
+                          <p className="text-xs text-gray-400 mb-2">{item.description}</p>
+                        )}
+                        <p className="text-2xl font-bold text-orange-600">₹{item.price}</p>
+                        {isAllMode && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Vendor: {item.vendor?.restaurantName || item.vendor?.name || 'Unknown'}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2 items-end">
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
+                          item.available
+                            ? 'bg-green-100 text-green-800 border-green-200'
+                            : 'bg-red-100 text-red-800 border-red-200'
+                        }`}>
+                          {item.available ? 'Available' : 'Unavailable'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => startEdit(item)}
+                        className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2 rounded-lg hover:from-blue-600 hover:to-indigo-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
+                      >
+                        <Edit size={14} />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => toggleAvailability(item._id || item.id)}
+                        className={`py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
+                          item.available
+                            ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
+                            : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
+                        }`}
+                      >
+                        {item.available ? 'Disable' : 'Enable'}
+                      </button>
+                      <button
+                        onClick={() => deleteItem(item._id || item.id)}
+                        className="col-span-2 bg-gradient-to-r from-red-500 to-pink-500 text-white py-2 rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
+                      >
+                        <Trash2 size={14} />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1735,6 +2840,12 @@ const KhanaLineupApp = () => {
     const totalOrders = completedOrders.length;
     const totalCancelled = cancelledOrders.length;
 
+    // Split analytics by source (online vs walk-in)
+    const onlineCompletedOrders = completedOrders.filter(order => order.source !== 'walk-in');
+    const walkInCompletedOrders = completedOrders.filter(order => order.source === 'walk-in');
+    const onlineSales = onlineCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const walkInSales = walkInCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
     const itemCounts = {};
     completedOrders.forEach(order => {
       order.items.forEach(item => {
@@ -1771,6 +2882,9 @@ const KhanaLineupApp = () => {
               <div>
                 <p className="text-blue-100 text-sm">Total Sales</p>
                 <p className="text-3xl font-bold">₹{totalSales}</p>
+                <p className="text-xs text-blue-100 mt-1">
+                  Online: ₹{onlineSales} · Walk-in: ₹{walkInSales}
+                </p>
               </div>
               <TrendingUp size={32} className="text-blue-300" />
             </div>
@@ -1781,6 +2895,9 @@ const KhanaLineupApp = () => {
               <div>
                 <p className="text-green-100 text-sm">Completed Orders</p>
                 <p className="text-3xl font-bold">{totalOrders}</p>
+                <p className="text-xs text-green-100 mt-1">
+                  Online: {onlineCompletedOrders.length} · Walk-in: {walkInCompletedOrders.length}
+                </p>
               </div>
               <Package size={32} className="text-green-300" />
             </div>
@@ -1847,7 +2964,7 @@ const KhanaLineupApp = () => {
                       </span>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium">{order.customer?.name || order.customerName || 'Unknown Customer'}</p>
+                          <p className="font-medium">{order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}</p>
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                             order.status === 'completed' 
                               ? 'bg-green-100 text-green-800' 
@@ -2021,7 +3138,10 @@ const KhanaLineupApp = () => {
                   <div>
                     <h3 className="text-xl font-bold text-gray-600">Token #{order.tokenId}</h3>
                     <p className="text-gray-600 font-medium">
-                      {order.customer?.name || order.customerName || 'Unknown Customer'}
+                      {order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Type: {order.source === 'walk-in' ? 'Walk-in (Offline)' : 'Online'}
                     </p>
                     <p className="text-sm text-gray-500">
                       Completed: {formatDate(order.timestamps?.completed || order.completedAt || order.updatedAt)}
@@ -2030,7 +3150,7 @@ const KhanaLineupApp = () => {
                       Ordered: {formatDate(order.createdAt || order.timestamp)}
                     </p>
                   </div>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 items-end">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
                       order.status === 'completed' 
                         ? 'bg-green-100 text-green-800 border-green-200' 
@@ -2043,6 +3163,12 @@ const KhanaLineupApp = () => {
                         Cancelled by customer
                       </span>
                     )}
+                    <button
+                      onClick={() => printOrderReceipt(order)}
+                      className="px-3 py-1 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      Print / Download
+                    </button>
                     <button
                       onClick={() => handleOrderDelete(order._id || order.id)}
                       className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
@@ -2152,14 +3278,20 @@ const KhanaLineupApp = () => {
       name: currentUser?.name || '',
       email: currentUser?.email || '',
       phone: currentUser?.phone || '',
-      address: currentUser?.address || '',
+      address: currentUser?.fullAddress || '',
       restaurantName: currentUser?.restaurantName || ''
     });
     const [isEditing, setIsEditing] = useState(false);
 
     const handleSaveProfile = () => {
-      updateUser(currentUser.id, profileData);
-      setCurrentUser({ ...currentUser, ...profileData });
+      const payload = { ...profileData };
+      if (typeof payload.address === 'string') {
+        payload.address = {
+          street: payload.address
+        };
+      }
+      updateUser(currentUser.id, payload);
+      setCurrentUser({ ...currentUser, ...payload });
       setIsEditing(false);
       setNotifications([...notifications, {
         id: Date.now(),
@@ -2381,8 +3513,11 @@ const KhanaLineupApp = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {orders.map(order => (
-                  <tr key={order._id || order.id} className={`hover:bg-gray-50 transition-colors ${selectedOrders.includes(order._id || order.id) ? 'bg-blue-50' : ''}`}>
-                    <td className="py-4 px-6">
+                  <tr
+                    key={order._id || order.id}
+                    className={`group hover:bg-gray-50 transition-colors ${selectedOrders.includes(order._id || order.id) ? 'bg-blue-50' : ''}`}
+                  >
+                    <td className="py-4 px-6 group-hover:text-gray-900">
                       <input
                         type="checkbox"
                         checked={selectedOrders.includes(order._id || order.id)}
@@ -2390,15 +3525,15 @@ const KhanaLineupApp = () => {
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
-                    <td className="py-4 px-6 font-medium">#{order.tokenId}</td>
-                    <td className="py-4 px-6">
-                      {order.customer?.name || order.customerName || 'Unknown Customer'}
+                    <td className="py-4 px-6 font-medium group-hover:text-gray-900">#{order.tokenId}</td>
+                    <td className="py-4 px-6 group-hover:text-gray-900">
+                      {order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-6 group-hover:text-gray-900">
                       {order.vendor?.name || order.vendorName || 'Unknown Vendor'}
                     </td>
-                    <td className="py-4 px-6">{order.items.length} items</td>
-                    <td className="py-4 px-6 font-semibold text-orange-600">₹{order.totalAmount}</td>
+                    <td className="py-4 px-6 group-hover:text-gray-900">{order.items.length} items</td>
+                    <td className="py-4 px-6 font-semibold text-orange-600 group-hover:text-orange-700">₹{order.totalAmount}</td>
                     <td className="py-4 px-6">
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                         order.status === 'completed' ? 'bg-green-100 text-green-800' :
@@ -2410,7 +3545,7 @@ const KhanaLineupApp = () => {
                         {order.status}
                       </span>
                     </td>
-                    <td className="py-4 px-6 text-sm text-gray-600">
+                    <td className="py-4 px-6 text-sm text-gray-600 group-hover:text-gray-900">
                       {(() => {
                         const date = order.createdAt || order.timestamps?.ordered || order.timestamp;
                         if (!date) return 'Unknown Date';
@@ -2461,6 +3596,137 @@ const KhanaLineupApp = () => {
     const totalRevenue = orders.filter(order => order.status === 'completed')
       .reduce((sum, order) => sum + order.totalAmount, 0);
 
+    const onlineCompletedOrders = orders.filter(order => order.status === 'completed' && order.source !== 'walk-in');
+    const walkInCompletedOrders = orders.filter(order => order.status === 'completed' && order.source === 'walk-in');
+    const onlineRevenue = onlineCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const walkInRevenue = walkInCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
+    const [vendorSearchInput, setVendorSearchInput] = useState('');
+    const [vendorSearchTerm, setVendorSearchTerm] = useState('');
+    const [showAdminAnalytics, setShowAdminAnalytics] = useState(true);
+    const [analyticsVendorId, setAnalyticsVendorId] = useState('all');
+
+    const vendorList = Object.values(users).filter(user => user.role === 'vendor');
+    const filteredVendors = vendorList.filter(vendor => {
+      if (!vendorSearchTerm) return true;
+      const query = vendorSearchTerm.toLowerCase();
+      return (
+        (vendor.restaurantName || '').toLowerCase().includes(query) ||
+        (vendor.name || '').toLowerCase().includes(query) ||
+        (vendor.email || '').toLowerCase().includes(query) ||
+        (vendor.phone || '').toLowerCase().includes(query)
+      );
+    });
+
+    const completedOrdersForRevenue = orders.filter(order => order.status === 'completed');
+    const vendorRevenueMap = {};
+
+    completedOrdersForRevenue.forEach(order => {
+      let vendorId = null;
+      let vendorName = 'Unknown Vendor';
+
+      if (order.vendor) {
+        if (typeof order.vendor === 'object') {
+          vendorId = order.vendor._id || order.vendor.id;
+          vendorName =
+            order.vendor.restaurantName ||
+            order.vendor.name ||
+            vendorName;
+        } else {
+          vendorId = order.vendor;
+        }
+      }
+
+      if (!vendorName || vendorName === 'Unknown Vendor') {
+        vendorName = order.vendorName || 'Unknown Vendor';
+      }
+
+      if (!vendorId) {
+        vendorId = vendorName;
+      }
+
+      if (!vendorRevenueMap[vendorId]) {
+        vendorRevenueMap[vendorId] = {
+          vendorId,
+          vendorName,
+          orderCount: 0,
+          revenue: 0,
+        };
+      }
+
+      vendorRevenueMap[vendorId].orderCount += 1;
+      vendorRevenueMap[vendorId].revenue += order.totalAmount || 0;
+    });
+
+    const vendorRevenueList = Object.values(vendorRevenueMap).sort((a, b) => b.revenue - a.revenue);
+
+    const getRevenueFilteredOrders = () => {
+      const now = new Date();
+      const filterDate = new Date();
+
+      switch (orderFilter) {
+        case '7days':
+          filterDate.setDate(now.getDate() - 7);
+          break;
+        case '1month':
+          filterDate.setMonth(now.getMonth() - 1);
+          break;
+        case '3months':
+          filterDate.setMonth(now.getMonth() - 3);
+          break;
+        default:
+          filterDate.setDate(now.getDate() - 7);
+      }
+
+      return orders.filter(order => {
+        const orderDate = new Date(order.createdAt || order.timestamp);
+
+        // Optional vendor filter for analytics panel
+        if (analyticsVendorId && analyticsVendorId !== 'all') {
+          let orderVendorId = null;
+          if (order.vendor) {
+            if (typeof order.vendor === 'object') {
+              orderVendorId = order.vendor._id || order.vendor.id;
+            } else {
+              orderVendorId = order.vendor;
+            }
+          }
+
+          if (orderVendorId !== analyticsVendorId) return false;
+        }
+
+        return orderDate >= filterDate;
+      });
+    };
+
+    const revenueFilteredOrders = getRevenueFilteredOrders();
+    const revenueCompletedOrders = revenueFilteredOrders.filter(order => order.status === 'completed');
+    const revenueCancelledOrders = revenueFilteredOrders.filter(order => order.status === 'cancelled');
+    const revenueCompletedAndCancelledOrders = revenueFilteredOrders.filter(order =>
+      order.status === 'completed' || order.status === 'cancelled'
+    );
+
+    const revenueTotalSales = revenueCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const revenueTotalOrders = revenueCompletedOrders.length;
+    const revenueTotalCancelled = revenueCancelledOrders.length;
+
+    const revenueOnlineCompletedOrders = revenueCompletedOrders.filter(order => order.source !== 'walk-in');
+    const revenueWalkInCompletedOrders = revenueCompletedOrders.filter(order => order.source === 'walk-in');
+    const revenueOnlineSales = revenueOnlineCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const revenueWalkInSales = revenueWalkInCompletedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
+    const revenueItemCounts = {};
+    revenueCompletedOrders.forEach(order => {
+      (order.items || []).forEach(item => {
+        if (!item || !item.name) return;
+        revenueItemCounts[item.name] = (revenueItemCounts[item.name] || 0) + (item.quantity || 0);
+      });
+    });
+
+    const revenueSortedItems = Object.entries(revenueItemCounts).sort((a, b) => b[1] - a[1]);
+    const revenueMaxItem = revenueSortedItems[0] || ['No items', 0];
+    const revenueMinItem = revenueSortedItems[revenueSortedItems.length - 1] || ['No items', 0];
+
     return (
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
         <h2 className="text-3xl font-bold mb-8 text-gray-800">Admin Dashboard</h2>
@@ -2496,11 +3762,24 @@ const KhanaLineupApp = () => {
             </div>
           </div>
           
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-2xl p-6 shadow-lg">
+          <div
+            className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-2xl p-6 shadow-lg cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+            onClick={() => {
+              setShowAdminAnalytics(true);
+              const el = document.getElementById('admin-revenue-analytics');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+            title="Click to view revenue analytics overview"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-purple-100 text-sm">Revenue</p>
                 <p className="text-3xl font-bold">₹{totalRevenue}</p>
+                <p className="text-xs text-purple-100 mt-1">
+                  Online: ₹{onlineRevenue} · Walk-in: ₹{walkInRevenue}
+                </p>
               </div>
               <TrendingUp size={32} className="text-purple-300" />
             </div>
@@ -2510,15 +3789,26 @@ const KhanaLineupApp = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           {/* Vendors Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <h3 className="text-xl font-semibold flex items-center gap-2">
                 <Store size={24} className="text-orange-600" />
                 All Vendors
               </h3>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                  <SearchField
+                    value={vendorSearchInput}
+                    onChange={setVendorSearchInput}
+                    onSearch={val => setVendorSearchTerm(val.trim())}
+                    placeholder="Search vendors..."
+                  />
+                </div>
+              </div>
             </div>
             <div className="p-6">
               <div className="space-y-4">
-                {Object.values(users).filter(user => user.role === 'vendor').map(vendor => (
+                {filteredVendors.map(vendor => (
                   <div key={vendor.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                     <div>
                       <h4 className="font-semibold text-gray-800">{vendor.restaurantName || vendor.name}</h4>
@@ -2527,8 +3817,18 @@ const KhanaLineupApp = () => {
                       {vendor.phone && (
                         <p className="text-xs text-gray-500">{vendor.phone}</p>
                       )}
-                      {vendor.address && (
-                        <p className="text-xs text-gray-400">{vendor.address}</p>
+                      {(vendor.fullAddress || vendor.address) && (
+                        <p className="text-xs text-gray-400">
+                          {vendor.fullAddress || (typeof vendor.address === 'string'
+                            ? vendor.address
+                            : [
+                                vendor.address?.street,
+                                vendor.address?.city,
+                                vendor.address?.state,
+                                vendor.address?.zipCode
+                              ].filter(Boolean).join(', ')
+                          )}
+                        </p>
                       )}
                     </div>
                     <div className="text-right">
@@ -2540,6 +3840,17 @@ const KhanaLineupApp = () => {
                       <p className="text-xs text-gray-500 mt-1">
                         {menuItems.filter(item => item.vendor?._id === vendor.id || item.vendorId === vendor.id).length} items
                       </p>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <button
+                          onClick={() => {
+                            setAdminSelectedVendor(vendor);
+                            setActiveTab('admin-vendor-menu');
+                          }}
+                          className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-xs"
+                        >
+                          Vendor Screen
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -2569,7 +3880,13 @@ const KhanaLineupApp = () => {
                   <span className="text-orange-800 font-medium">Customers</span>
                   <span className="text-orange-600 font-bold">{Object.values(users).filter(u => u.role === 'customer').length}</span>
                 </div>
-                <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                <div
+                  className="flex justify-between items-center p-3 bg-purple-50 rounded-lg cursor-pointer hover:bg-purple-100 transition-colors"
+                  onClick={() => {
+                    setAdminSelectedVendor(null);
+                    setActiveTab('admin-vendor-menu');
+                  }}
+                >
                   <span className="text-purple-800 font-medium">Menu Items</span>
                   <span className="text-purple-600 font-bold">{menuItems.length}</span>
                 </div>
@@ -2578,50 +3895,282 @@ const KhanaLineupApp = () => {
           </div>
         </div>
 
-        {/* Database Management */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden mt-8">
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-semibold flex items-center gap-2">
-              <Database size={24} className="text-red-600" />
-              Database Management
-            </h3>
-          </div>
-          <div className="p-6">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle size={20} className="text-red-600 mt-0.5" />
-                <div className="flex-1">
-                  <h4 className="font-semibold text-red-800 mb-2">Reset Database</h4>
-                  <p className="text-red-700 text-sm mb-4">
-                    This will permanently delete all data including users, orders, and menu items. This action cannot be undone.
-                  </p>
+        <div className="space-y-8 mt-8">
+          {showAdminAnalytics && (
+            <div
+              id="admin-revenue-analytics"
+              className="bg-white rounded-2xl shadow-lg overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-semibold">Revenue & Analytics Overview</h3>
+                  <p className="text-sm text-gray-500">View system-wide revenue and performance for all vendors.</p>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Vendor:</span>
+                    <select
+                      value={analyticsVendorId}
+                      onChange={(e) => setAnalyticsVendorId(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    >
+                      <option value="all">All Vendors</option>
+                      {vendorList.map(v => (
+                        <option key={v.id} value={v.id}>
+                          {v.restaurantName || v.name || v.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Period:</span>
+                    <select
+                      value={orderFilter}
+                      onChange={(e) => setOrderFilter(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    >
+                      <option value="7days">Last 7 days</option>
+                      <option value="1month">Last Month</option>
+                      <option value="3months">Last 3 Months</option>
+                    </select>
+                  </div>
                   <button
-                    onClick={async () => {
-                      if (window.confirm('Are you absolutely sure you want to reset the entire database? This will delete ALL data and cannot be undone!')) {
-                        try {
-                          const response = await apiService.resetDatabase();
-                          if (response.success) {
-                            alert('Database reset successfully! All data has been cleared and default admin user created.');
-                            // Clear any local authentication and reload
-                            localStorage.clear();
-                            window.location.reload();
-                          } else {
-                            alert('Failed to reset database: ' + response.message);
-                          }
-                        } catch (error) {
-                          console.error('Database reset error:', error);
-                          alert('Failed to reset database. Please check server connection.');
-                        }
-                      }
-                    }}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                    type="button"
+                    onClick={() => setShowAdminAnalytics(false)}
+                    className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-colors"
                   >
-                    Reset Database
+                    Close
                   </button>
+                </div>
+              </div>
+
+            <div className="p-6 space-y-8">
+              {/* Summary cards (same style as vendor analytics) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-blue-100 text-sm">Total Sales</p>
+                      <p className="text-3xl font-bold">₹{revenueTotalSales}</p>
+                      <p className="text-xs text-blue-100 mt-1">
+                        Online: ₹{revenueOnlineSales} · Walk-in: ₹{revenueWalkInSales}
+                      </p>
+                    </div>
+                    <TrendingUp size={32} className="text-blue-300" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-green-100 text-sm">Completed Orders</p>
+                      <p className="text-3xl font-bold">{revenueTotalOrders}</p>
+                    </div>
+                    <Package size={32} className="text-green-300" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-red-100 text-sm">Cancelled Orders</p>
+                      <p className="text-3xl font-bold">{revenueTotalCancelled}</p>
+                    </div>
+                    <X size={32} className="text-red-300" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-orange-100 text-sm">Most Ordered</p>
+                      <p className="text-lg font-bold">{revenueMaxItem[0]}</p>
+                      <p className="text-orange-200 text-sm">{revenueMaxItem[1]} times</p>
+                    </div>
+                    <TrendingUp size={32} className="text-orange-300" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-purple-100 text-sm">Least Ordered</p>
+                      <p className="text-lg font-bold">{revenueMinItem[0]}</p>
+                      <p className="text-purple-200 text-sm">{revenueMinItem[1]} times</p>
+                    </div>
+                    <TrendingDown size={32} className="text-purple-300" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Completed & Cancelled Orders list */}
+              <div className="bg-gray-50 rounded-2xl p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-lg font-semibold text-gray-800">Completed & Cancelled Orders</h4>
+                  <span className="text-sm text-gray-500">
+                    {revenueCompletedAndCancelledOrders.length} order
+                    {revenueCompletedAndCancelledOrders.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {revenueCompletedAndCancelledOrders.length === 0 ? (
+                  <div className="text-center py-8">
+                    <CheckCircle size={48} className="mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-500">No completed or cancelled orders in selected period</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {revenueCompletedAndCancelledOrders.map((order) => (
+                      <div
+                        key={order._id || order.id}
+                        className="flex items-center justify-between p-4 bg-white rounded-xl hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`font-bold w-10 h-10 rounded-full flex items-center justify-center text-sm ${
+                                order.status === 'completed'
+                                  ? 'bg-green-100 text-green-600'
+                                  : 'bg-red-100 text-red-600'
+                              }`}
+                            >
+                              #{order.tokenId}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">
+                                  {order.customer?.name || order.customerName || order.walkInCustomer?.name || 'Unknown Customer'}
+                                </p>
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    order.status === 'completed'
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}
+                                >
+                                  {order.status === 'completed' ? 'Completed' : 'Cancelled'}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-500">
+                                {(order.items || []).map(item => `${item.name} x${item.quantity}`).join(', ')}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {(() => {
+                                  const date =
+                                    order.status === 'completed'
+                                      ? (order.timestamps?.completed || order.completedAt || order.updatedAt)
+                                      : (order.timestamps?.cancelled || order.cancelledAt || order.updatedAt);
+                                  if (!date) return 'Unknown date';
+                                  try {
+                                    return new Date(date).toLocaleString();
+                                  } catch {
+                                    return 'Invalid date';
+                                  }
+                                })()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-orange-600 font-semibold">₹{order.totalAmount}</span>
+                          <button
+                            onClick={async () => {
+                              await handleOrderDelete(order._id || order.id);
+                            }}
+                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors"
+                            title="Delete Order"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Vendor revenue table */}
+              <div className="bg-gray-50 rounded-2xl p-6">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4">Revenue by Vendor</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="text-left py-3 px-6 font-semibold text-gray-700">Vendor</th>
+                        <th className="text-left py-3 px-6 font-semibold text-gray-700">Completed Orders</th>
+                        <th className="text-left py-3 px-6 font-semibold text-gray-700">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {vendorRevenueList.length === 0 ? (
+                        <tr>
+                          <td className="py-4 px-6 text-gray-500" colSpan={3}>
+                            No completed orders yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        vendorRevenueList.map((entry) => (
+                          <tr key={entry.vendorId} className="hover:bg-gray-50 transition-colors">
+                            <td className="py-3 px-6 text-gray-900">{entry.vendorName}</td>
+                            <td className="py-3 px-6 text-gray-700">{entry.orderCount}</td>
+                            <td className="py-3 px-6 font-semibold text-orange-600">₹{entry.revenue}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
           </div>
+          )}
+
+          {showAdminAnalytics && (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-xl font-semibold flex items-center gap-2">
+                  <Database size={24} className="text-red-600" />
+                  Database Management
+                </h3>
+              </div>
+              <div className="p-6">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-red-600 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-red-800 mb-2">Reset Database</h4>
+                      <p className="text-red-700 text-sm mb-4">
+                        This will permanently delete all data including users, orders, and menu items. This action cannot be undone.
+                      </p>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm('Are you absolutely sure you want to reset the entire database? This will delete ALL data and cannot be undone!')) {
+                            try {
+                              const response = await apiService.resetDatabase();
+                              if (response.success) {
+                                alert('Database reset successfully! All data has been cleared and default admin user created.');
+                                // Clear any local authentication and reload
+                                localStorage.clear();
+                                window.location.reload();
+                              } else {
+                                alert('Failed to reset database: ' + response.message);
+                              }
+                            } catch (error) {
+                              console.error('Database reset error:', error);
+                              alert('Failed to reset database. Please check server connection.');
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                      >
+                        Reset Database
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -2767,9 +4316,9 @@ const KhanaLineupApp = () => {
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200">
                 {allUsers.map(user => (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={user.id} className="group hover:bg-gray-50 transition-colors">
                     {editingUser === user.id ? (
                       <>
                         <td className="py-4 px-6">
@@ -2835,9 +4384,9 @@ const KhanaLineupApp = () => {
                       </>
                     ) : (
                       <>
-                        <td className="py-4 px-6 font-medium">{user.name}</td>
-                        <td className="py-4 px-6">{user.email}</td>
-                        <td className="py-4 px-6">
+                        <td className="py-4 px-6 font-medium group-hover:text-gray-900">{user.name}</td>
+                        <td className="py-4 px-6 group-hover:text-gray-900">{user.email}</td>
+                        <td className="py-4 px-6 group-hover:text-gray-900">
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-sm">
                               {showPassword[user.id] ? user.password : '••••••••'}
@@ -2992,21 +4541,21 @@ const KhanaLineupApp = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {pendingVendors.map((vendor) => (
-                      <tr key={vendor._id} className="hover:bg-gray-50">
-                        <td className="py-4 px-6">
-                          <div className="font-medium text-gray-900">{vendor.name}</div>
+                      <tr key={vendor._id} className="group hover:bg-gray-50 transition-colors">
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="font-medium text-gray-900 group-hover:text-gray-900">{vendor.name}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="text-gray-600">{vendor.email}</div>
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="text-gray-600 group-hover:text-gray-900">{vendor.email}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="text-gray-600">{vendor.restaurantName || 'Not specified'}</div>
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="text-gray-600 group-hover:text-gray-900">{vendor.restaurantName || 'Not specified'}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="text-gray-600">{vendor.phone || 'Not provided'}</div>
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="text-gray-600 group-hover:text-gray-900">{vendor.phone || 'Not provided'}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="text-gray-600">
+                        <td className="py-4 px-6 group-hover:text-gray-900">
+                          <div className="text-gray-600 group-hover:text-gray-900">
                             {new Date(vendor.createdAt).toLocaleDateString()}
                           </div>
                         </td>
@@ -3056,11 +4605,9 @@ const KhanaLineupApp = () => {
         </div>
       );
     }
-    return (
-      <div>
-        <AuthForm />
-      </div>
-    );
+    // Call AuthForm as a plain function so React treats its output as part of this component tree
+    // instead of a separate component that might remount and steal focus.
+    return AuthForm();
   }
 
   const renderContent = () => {
@@ -3070,14 +4617,37 @@ const KhanaLineupApp = () => {
       case 'cart':
         return <CartView />;
       case 'orders':
-        return currentRole === 'customer' ? <CustomerOrdersView /> : 
-               currentRole === 'vendor' ? <VendorOrdersView /> : <AdminOrderManagement />;
+        return currentRole === 'customer' 
+          ? <CustomerOrdersView 
+              showHistory={customerOrdersShowHistory} 
+              setShowHistory={setCustomerOrdersShowHistory} 
+              historyFilterType={customerOrdersHistoryFilterType}
+              setHistoryFilterType={setCustomerOrdersHistoryFilterType}
+              historyFilterDate={customerOrdersHistoryFilterDate}
+              setHistoryFilterDate={setCustomerOrdersHistoryFilterDate}
+            /> 
+          : currentRole === 'vendor' 
+            ? <VendorOrdersView /> 
+            : <AdminOrderManagement />;
+      case 'walk-in':
+        return <VendorWalkInView />;
       case 'menu-manage':
-        return <MenuManageView />;
+        return (
+          <VendorMenuManageView
+            currentUser={currentUser}
+            menuItems={menuItems}
+            loading={loading}
+            addMenuItem={addMenuItem}
+            updateMenuItem={updateMenuItem}
+            deleteMenuItem={deleteMenuItem}
+          />
+        );
       case 'completed':
         return <CompletedOrdersView />;
       case 'analytics':
         return <VendorAnalyticsView />;
+      case 'admin-vendor-menu':
+        return <AdminVendorMenuView />;
       case 'dashboard':
         return <AdminDashboard />;
       case 'users':
@@ -3091,22 +4661,365 @@ const KhanaLineupApp = () => {
     }
   };
 
+  // Prepare latest notification styling
+  const latestNotification = notifications[notifications.length - 1];
+  const notificationType = latestNotification?.type || 'info';
+
+  let notificationBgClass = 'bg-gradient-to-r from-green-500 to-emerald-500';
+  if (notificationType === 'warning') {
+    notificationBgClass = 'bg-gradient-to-r from-yellow-500 to-orange-500';
+  } else if (notificationType === 'error') {
+    notificationBgClass = 'bg-gradient-to-r from-red-500 to-rose-500';
+  } else if (notificationType === 'info') {
+    notificationBgClass = 'bg-gradient-to-r from-blue-500 to-indigo-500';
+  }
+
+  const NotificationIcon = (notificationType === 'error' || notificationType === 'warning')
+    ? AlertTriangle
+    : Bell;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-orange-50">
+    <div className={isDarkMode
+      ? 'dark min-h-screen bg-slate-950 text-gray-100'
+      : 'min-h-screen bg-gradient-to-br from-gray-50 to-orange-50 text-gray-900'
+    }>
       <Navigation />
       
-      {/* Socket.IO Notification Center */}
-      <NotificationCenter 
-        notifications={socketNotifications} 
-        isConnected={isConnected}
-        currentUser={currentUser}
-      />
+      {/* Notifications */}
+      {notifications.length > 0 && (currentRole === 'customer' || currentRole === 'vendor') && latestNotification && (
+        <div className={`${notificationBgClass} text-white p-3 sm:p-4 shadow-lg`}>
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+              <div className="animate-pulse flex-shrink-0">
+                <NotificationIcon size={18} className="sm:w-5 sm:h-5" />
+              </div>
+              <p className="font-medium text-sm sm:text-base truncate">{latestNotification.message}</p>
+            </div>
+            <button
+              onClick={() => setNotifications([])}
+              className="text-white hover:text-green-100 transition-colors text-xl sm:text-2xl flex-shrink-0 w-6 h-6 flex items-center justify-center"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       
       {renderContent()}
     </div>
   );
 };
 
+// Standalone Vendor menu management component so state does not reset on every parent re-render
+const VendorMenuManageView = ({
+  currentUser,
+  menuItems,
+  loading,
+  addMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
+}) => {
+  // Admin should not access menu management
+  if (currentUser?.role === 'admin') {
+    return (
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+          <h2 className="text-2xl font-bold text-yellow-800 mb-2">Access Restricted</h2>
+          <p className="text-yellow-700">
+            Admin users can only supervise. Menu management is restricted to vendors only.
+          </p>
+          <p className="text-sm text-yellow-600 mt-2">
+            Please use the Dashboard or Users section for administrative tasks.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const [editingItem, setEditingItem] = useState(null);
+  const [editData, setEditData] = useState({});
+  const [newItem, setNewItem] = useState({
+    name: '',
+    price: '',
+    category: '',
+    available: true,
+    description: ''
+  });
+  const [localVendorSearchQuery, setLocalVendorSearchQuery] = useState('');
+  const [vendorInput, setVendorInput] = useState('');
+  const [vendorSearchTerm, setVendorSearchTerm] = useState('');
+
+  const filteredMenuItems = menuItems.filter(item => {
+    const vendorId = item.vendor?._id || item.vendorId || (typeof item.vendor === 'string' ? item.vendor : null);
+    const belongsToVendor = vendorId === (currentUser?.id || currentUser?._id);
+    if (!vendorSearchTerm) return belongsToVendor;
+    const matchesSearch = item.name?.toLowerCase().includes(vendorSearchTerm.toLowerCase())
+      || item.category?.toLowerCase().includes(vendorSearchTerm.toLowerCase());
+    return belongsToVendor && matchesSearch;
+  });
+
+  const addItem = async () => {
+    if (newItem.name && newItem.price && newItem.category) {
+      const item = {
+        name: newItem.name,
+        price: parseInt(newItem.price),
+        category: newItem.category,
+        description: newItem.description,
+        available: true,
+        vendor: currentUser.id,
+        stock: 10,
+      };
+
+      try {
+        await addMenuItem(item);
+        // Clear the form fields after successful add
+        setNewItem({
+          name: '',
+          price: '',
+          category: '',
+          available: true,
+          description: ''
+        });
+        alert('Menu item added successfully!');
+      } catch (error) {
+        console.error('Error adding menu item:', error);
+        alert('Error adding menu item: ' + error.message);
+      }
+    } else {
+      alert('Please fill in all required fields (Name, Price, and Category)');
+    }
+  };
+
+  const startEdit = (item) => {
+    const itemId = item._id || item.id;
+    setEditingItem(itemId);
+    setEditData({ ...item });
+  };
+
+  const saveEdit = async () => {
+    if (!editingItem) return;
+    try {
+      await updateMenuItem(editingItem, { ...editData, price: parseInt(editData.price) });
+    } catch (error) {
+      console.error('Error saving menu item edit:', error);
+    } finally {
+      setEditingItem(null);
+      setEditData({});
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingItem(null);
+    setEditData({});
+  };
+
+  const deleteItemHandler = (id) => {
+    const itemId = id._id || id.id || id;
+    if (window.confirm('Are you sure you want to delete this item?')) {
+      deleteMenuItem(itemId);
+    }
+  };
+
+  const toggleAvailability = (id) => {
+    const itemId = id._id || id.id || id;
+    const item = menuItems.find(i => (i._id || i.id) === itemId);
+    if (item) {
+      updateMenuItem(itemId, { ...item, available: !item.available });
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <h2 className="text-3xl font-bold text-gray-800">Manage Menu</h2>
+
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <SearchField
+            value={vendorInput}
+            onChange={setVendorInput}
+            onSearch={val => setVendorSearchTerm(val.trim())}
+            placeholder="Search menu items..."
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+        <h3 className="text-xl font-semibold mb-4">Add New Item</h3>
+        <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+          <p className="text-sm text-gray-600">
+            Menu Items Status: {loading ? 'Loading...' : `${menuItems.length} items loaded`} |
+            Filtered: {filteredMenuItems.length} items |
+            Current User: {currentUser?.name || 'None'} ({currentUser?.id || 'No ID'})
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+          <input
+            id="new-item-name"
+            name="itemName"
+            type="text"
+            placeholder="Item Name*"
+            value={newItem.name}
+            onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+            className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+          />
+          <input
+            id="new-item-price"
+            name="itemPrice"
+            type="number"
+            placeholder="Price*"
+            value={newItem.price}
+            onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+            className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+          />
+          <select
+            id="new-item-category"
+            name="itemCategory"
+            value={newItem.category}
+            onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+            className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+          >
+            <option value="">Select Category*</option>
+            <option value="Main Course">Main Course</option>
+            <option value="Bread">Bread</option>
+            <option value="Rice">Rice</option>
+            <option value="Beverage">Beverage</option>
+            <option value="Dessert">Dessert</option>
+          </select>
+          <input
+            id="new-item-description"
+            name="itemDescription"
+            type="text"
+            placeholder="Description"
+            value={newItem.description}
+            onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+            className="px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+          />
+          <button
+            onClick={addItem}
+            className="bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 sm:py-3 text-sm sm:text-base rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 flex items-center justify-center gap-2 transform hover:scale-105 font-medium"
+          >
+            <Plus size={18} />
+            <span className="hidden sm:inline">Add Item</span>
+            <span className="sm:hidden">Add</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+        {filteredMenuItems.map(item => {
+          const itemId = item._id || item.id;
+          return (
+            <div
+              key={itemId}
+              className={`bg-white rounded-2xl shadow-lg p-4 sm:p-6 transition-all duration-300 hover:shadow-xl ${!item.available ? 'opacity-75' : ''}`}
+            >
+              {editingItem === itemId ? (
+                <div className="space-y-4">
+                  <input
+                    id={`edit-item-name-${item._id || item.id}`}
+                    name={`editItemName-${item._id || item.id}`}
+                    type="text"
+                    value={editData.name || ''}
+                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    placeholder="Item name"
+                  />
+                  <input
+                    id={`edit-item-price-${item._id || item.id}`}
+                    name={`editItemPrice-${item._id || item.id}`}
+                    type="number"
+                    value={editData.price || ''}
+                    onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                    placeholder="Price"
+                  />
+                  <select
+                    id={`edit-item-category-${item._id || item.id}`}
+                    name={`editItemCategory-${item._id || item.id}`}
+                    value={editData.category || ''}
+                    onChange={(e) => setEditData({ ...editData, category: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="Main Course">Main Course</option>
+                    <option value="Bread">Bread</option>
+                    <option value="Rice">Rice</option>
+                    <option value="Beverage">Beverage</option>
+                    <option value="Dessert">Dessert</option>
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveEdit}
+                      className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-300 font-medium"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                      <h4 className="text-lg font-semibold mb-1">{item.name}</h4>
+                      <p className="text-gray-600 text-sm mb-1">{item.category}</p>
+                      {item.description && (
+                        <p className="text-xs text-gray-400 mb-2">{item.description}</p>
+                      )}
+                      <p className="text-2xl font-bold text-orange-600">₹{item.price}</p>
+                    </div>
+                    <div className="flex flex-col gap-2 items-end">
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-medium border ${
+                          item.available
+                            ? 'bg-green-100 text-green-800 border-green-200'
+                            : 'bg-red-100 text-red-800 border-red-200'
+                        }`}
+                      >
+                        {item.available ? 'Available' : 'Unavailable'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => startEdit(item)}
+                      className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2 rounded-lg hover:from-blue-600 hover:to-indigo-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
+                    >
+                      <Edit size={14} />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => toggleAvailability(item._id || item.id)}
+                      className={`py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
+                        item.available
+                          ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
+                          : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
+                      }`}
+                    >
+                      {item.available ? 'Disable' : 'Enable'}
+                    </button>
+                    <button
+                      onClick={() => deleteItemHandler(item._id || item.id)}
+                      className="col-span-2 bg-gradient-to-r from-red-500 to-pink-500 text-white py-2 rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-medium"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export default KhanaLineupApp;
-
-
