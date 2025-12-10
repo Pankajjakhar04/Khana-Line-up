@@ -22,11 +22,6 @@ code {
 
 /* Mobile touch optimizations */
 @media (max-width: 768px) {
-  * {
-    /* Improve touch target sizes */
-    min-height: 44px;
-  }
-  
   button, input, select, textarea {
     /* Better touch targets on mobile */
     min-height: 44px;
@@ -57,4 +52,104 @@ button {
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
+}
+
+/* Dark mode overrides */
+html.dark body {
+  background-color: #111827; /* gray-900: dark grey instead of pure black */
+  color: #e5e7eb; /* gray-200 */
+}
+
+html.dark .bg-white {
+  background-color: #111827; /* gray-900 */
+}
+
+html.dark .bg-gray-50 {
+  background-color: #1f2937; /* gray-800 */
+}
+
+html.dark .bg-gray-100 {
+  background-color: #374151; /* gray-700 */
+}
+
+html.dark .bg-gray-200 {
+  background-color: #4b5563; /* gray-600 */
+}
+
+html.dark .text-gray-800 {
+  color: #e5e7eb; /* gray-200 */
+}
+
+html.dark .text-gray-700 {
+  color: #d1d5db; /* gray-300 */
+}
+
+html.dark .text-gray-600 {
+  color: #9ca3af; /* gray-400 */
+}
+
+/* Ensure very dark text classes stay readable on dark backgrounds */
+html.dark .text-gray-900,
+html.dark .text-black {
+  color: #f9fafb; /* gray-50 */
+}
+
+/* Dark mode form elements */
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #111827; /* gray-900 */
+  color: #f9fafb; /* gray-50 */
+  border-color: #4b5563; /* gray-600 */
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #9ca3af; /* gray-400 */
+}
+
+/* Dark mode: highlight menu item cards so they stand out from background */
+html.dark .menu-card {
+  background-color: #0b1120; /* slightly lighter than page background */
+  border: 1px solid rgba(148, 163, 184, 0.35); /* slate-400-ish border for separation */
+}
+
+/* Glassmorphism utility (performance-friendly) */
+.glass {
+  /* Modest blur and saturation for good look + decent performance */
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+
+  /* Light, subtle background tint */
+  background: rgba(255, 255, 255, 0.08);
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.25),
+    rgba(255, 255, 255, 0.02)
+  );
+
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.3),   /* outer soft shadow */
+    inset 0 1px 0 rgba(255, 255, 255, 0.3); /* top inner highlight */
+}
+
+/* Dark mode glass adjustment */
+html.dark .glass {
+  background: rgba(15, 23, 42, 0.65); /* slate-900-ish */
+  background-image: linear-gradient(
+    135deg,
+    rgba(148, 163, 184, 0.28),
+    rgba(15, 23, 42, 0.75)
+  );
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+/* Slightly lighter blur on smaller screens to be extra safe */
+@media (max-width: 768px) {
+  .glass {
+    backdrop-filter: blur(6px) saturate(125%);
+    -webkit-backdrop-filter: blur(6px) saturate(125%);
+  }
 }

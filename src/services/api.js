@@ -205,7 +205,8 @@ class ApiService {
   }
 
   async getVendorAnalytics(vendorId) {
-    return this.request(`/orders/vendor/${vendorId}/analytics`);
+    // Backend route: GET /api/orders/analytics/:vendorId
+    return this.request(`/orders/analytics/${vendorId}`);
   }
 
   async cancelOrder(orderId, cancellationData = {}) {
